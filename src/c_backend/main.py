@@ -1,11 +1,15 @@
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from c_backend.db import get_db_session
+from c_backend.repositories.messages import save_message
 from c_backend.schemas.whatsapp import (
     MockWhatsAppTextEvent,
     NormalizedMessage,
+    WhatsAppWebhookResponse,
 )
 
 
@@ -30,16 +34,28 @@ async def health_check() -> HealthResponse:
 
 @app.post(
     "/webhooks/whatsapp",
-    response_model=NormalizedMessage,
+    response_model=WhatsAppWebhookResponse,
 )
 async def receive_whatsapp_message(
     event: MockWhatsAppTextEvent,
-) -> NormalizedMessage:
-    return NormalizedMessage(
+    session: AsyncSession = Depends(get_db_session),
+) -> WhatsAppWebhookResponse:
+    message = NormalizedMessage(
         external_id=event.message_id,
         channel="whatsapp",
         sender_id=event.sender,
         content_type=event.type,
         content=event.text,
         received_at=event.timestamp,
+    )
+
+    result = await save_message(
+        session=session,
+        message=message,
+        raw_payload=event.model_dump(mode="json"),
+    )
+
+    return WhatsAppWebhookResponse(
+        status=result.value,
+        message=message,
     )

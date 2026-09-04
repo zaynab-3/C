@@ -21,3 +21,8 @@ class NormalizedMessage(BaseModel):
     content_type: Literal["text"]
     content: str
     received_at: datetime
+
+
+class WhatsAppWebhookResponse(BaseModel):
+    status: Literal["stored", "duplicate"]
+    message: NormalizedMessage
