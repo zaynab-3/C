@@ -5,12 +5,16 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from c_backend.db import get_db_session
-from c_backend.repositories.messages import save_message
+from c_backend.repositories.messages import (
+    SaveMessageResult,
+    save_message,
+)
 from c_backend.schemas.whatsapp import (
     MockWhatsAppTextEvent,
     NormalizedMessage,
     WhatsAppWebhookResponse,
 )
+from c_backend.tasks import process_message
 
 
 class HealthResponse(BaseModel):
@@ -54,6 +58,12 @@ async def receive_whatsapp_message(
         message=message,
         raw_payload=event.model_dump(mode="json"),
     )
+
+    if result == SaveMessageResult.STORED:
+        process_message.delay(
+            message.channel,
+            message.external_id,
+        )
 
     return WhatsAppWebhookResponse(
         status=result.value,
