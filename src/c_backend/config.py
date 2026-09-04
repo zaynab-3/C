@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     postgres_host: str = Field(validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(validation_alias="POSTGRES_PORT")
 
+    celery_broker_url: str = Field(
+        validation_alias="CELERY_BROKER_URL"
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:
