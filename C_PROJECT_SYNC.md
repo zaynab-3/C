@@ -3,7 +3,7 @@ C Project Sync
 Last updated: 2026-09-05
 Maintainer: Zainab's ChatGPT
 Repository: https://github.com/zaynab-3/C.git
-Current branch: feat/conversation-context
+Current branch: main
 
 PURPOSE
 
@@ -29,7 +29,7 @@ Use ASCII -> in this file to avoid encoding corruption.
 
 CURRENT CHECKPOINT
 
-Bounded conversation context is implemented and unit-tested on this branch.
+Bounded conversation context is implemented, unit-tested and merged to main.
 LIVE CONVERSATION CONTEXT E2E: VERIFIED.
 History comes from existing Message records; there is no long-term memory or
 LangGraph checkpointer. See CONVERSATION CONTEXT CHECKPOINT below.
@@ -912,7 +912,7 @@ Cross-modal verification:
 - A voice-note test word ("maple") was recalled from a later voice-note question.
 
 Known transcription-quality note:
-- One mixed Arabic/English voice test intended as "olive" was transcribed as the
+- One mixed Arabic/English voice test intended as "olive" was transcribed as
   a phonetic Arabic-script rendering rather than preserving the English word.
 - The later context recall reproduced that persisted transcript correctly.
 - This is a transcription-fidelity issue, not a conversation-context failure.
@@ -923,6 +923,6 @@ Images and documents are not implemented yet.
 
 NEXT
 
-Conversation-context branch is complete, committed and pushed.
-Merge this checkpoint to main after remote verification.
-Do not start long-term memory or the next feature until the merge is complete.
+Conversation context is complete, live E2E verified and merged to main.
+The repository is ready for the next feature decision.
+Do not treat short-term conversation context as long-term memory.
