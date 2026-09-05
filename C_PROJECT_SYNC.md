@@ -402,7 +402,7 @@ Cloudflare Quick Tunnel remains DEVELOPMENT ONLY.
 
 CURRENT TEXT ORCHESTRATION CHECKPOINT
 
-The first text-only LangGraph orchestration flow is implemented and unit-tested.
+The first text-only LangGraph orchestration flow is implemented, unit-tested, and live-verified.
 
 Required direction:
 
@@ -449,15 +449,16 @@ Zainab's ChatGPT will reconcile Hoteit's handoff against repository state and up
 
 LATEST VERIFIED MILESTONE
 
-bcc8404
-feat: persist AI replies and isolate WhatsApp delivery retries
+d49df41
+feat: add text LangGraph orchestration
 
-Live WhatsApp AI E2E: VERIFIED
-Reliable AI generation / delivery split: VERIFIED
-Automated tests: 30 PASSED
+Text LangGraph: IMPLEMENTED
+Automated tests: 34 PASSED
+Live WhatsApp -> LangGraph -> Gemini -> WhatsApp E2E: VERIFIED
+Reliable generation / delivery split: VERIFIED
 
 NEXT:
-First text-only LangGraph orchestration layer.
+First multimodal input path: WhatsApp voice notes / audio.
 
 AI PROVIDER ABSTRACTION CHECKPOINT
 
@@ -649,10 +650,35 @@ WHAT WAS VERIFIED
 - Tests cover graph/provider calls and metadata, independent invocations,
   worker graph traversal, unchanged prompt, AI failure without persistence/delivery,
   saved-reply reuse, outbound delivery failures and outbox dispatch reliability.
-- No live WhatsApp/provider E2E was performed for this graph checkpoint.
+- Live WhatsApp -> LangGraph -> AIProvider -> Gemini -> durable outbound -> WhatsApp E2E: VERIFIED.
+- Live input: LangGraph live test 1. Reply with exactly: LANGGRAPH LIVE
+- Phone received exactly: LANGGRAPH LIVE
+- Live provider/model: gemini / gemini-3.5-flash-lite.
+- PostgreSQL confirmed generated_reply=LANGGRAPH LIVE.
+- PostgreSQL confirmed ai_generated_at, processed_at and outbound_external_id are populated.
+- process_message outbox event: published, attempts=1, no error.
+- send_whatsapp_reply outbox event: published, attempts=1, no error.
 
 REVIEW NOTES
 
 - Existing database row locks remain held during generation and delivery.
 - Delivery remains at-least-once with the previously documented Meta/commit ambiguity.
 - This checkpoint stops at stateless text orchestration; no further scope is implemented.
+
+
+NEXT MULTIMODAL CHECKPOINT
+
+Start the first WhatsApp voice-note / audio input path.
+
+Direction:
+
+WhatsApp voice note
+-> Meta media webhook
+-> media retrieval
+-> audio processing / transcription
+-> LangGraph
+-> AIProvider
+-> generated response
+-> existing durable outbound delivery
+
+Keep text behavior unchanged while adding audio.
