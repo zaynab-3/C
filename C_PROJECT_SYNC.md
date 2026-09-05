@@ -269,7 +269,9 @@ v
 AI Provider Interface
 | |
 v v
-GeminiProvider The rest of C calls the shared provider interface rather than provider-specific code.
+GeminiProvider     OpenAIProvider
+
+The rest of C calls the shared provider interface rather than provider-specific code.
 Provider selection must be configuration-driven.
 
 Conceptually during development:
@@ -622,3 +624,4 @@ This does not change the provider architecture.
 NEXT
 
 First text-only LangGraph orchestration.
+
