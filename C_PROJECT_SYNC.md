@@ -801,7 +801,7 @@ No images, documents, tools, policy, approvals, calls, TTS or voice replies were
 CONVERSATION CONTEXT CHECKPOINT
 
 Branch: feat/conversation-context
-Implementation status: implemented and unit-tested; ready for review.
+Implementation status: complete, unit-tested and live E2E verified.
 LIVE CONVERSATION CONTEXT E2E: VERIFIED.
 
 ARCHITECTURE
@@ -913,7 +913,7 @@ Cross-modal verification:
 
 Known transcription-quality note:
 - One mixed Arabic/English voice test intended as "olive" was transcribed as the
-  Arabic phonetic form "????".
+  a phonetic Arabic-script rendering rather than preserving the English word.
 - The later context recall reproduced that persisted transcript correctly.
 - This is a transcription-fidelity issue, not a conversation-context failure.
 
@@ -923,5 +923,6 @@ Images and documents are not implemented yet.
 
 NEXT
 
-Close and commit the conversation-context branch after final validation.
-Do not start long-term memory or the next feature in this checkpoint.
+Conversation-context branch is complete, committed and pushed.
+Merge this checkpoint to main after remote verification.
+Do not start long-term memory or the next feature until the merge is complete.
