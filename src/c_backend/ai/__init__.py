@@ -1,4 +1,4 @@
-﻿from c_backend.ai.base import (
+from c_backend.ai.base import (
     AIProvider,
     AIProviderConfigurationError,
     AIProviderError,

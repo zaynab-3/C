@@ -1,4 +1,4 @@
-﻿from openai import AsyncOpenAI
+from openai import AsyncOpenAI
 
 from c_backend.ai.base import (
     AIProvider,
