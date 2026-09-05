@@ -36,6 +36,16 @@ class Settings(BaseSettings):
         validation_alias="WHATSAPP_ALLOWED_SENDERS",
     )
 
+    whatsapp_access_token: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_ACCESS_TOKEN",
+    )
+
+    whatsapp_phone_number_id: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_PHONE_NUMBER_ID",
+    )
+
     @property
     def whatsapp_allowed_senders(self) -> set[str]:
         return {
