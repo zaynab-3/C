@@ -3,7 +3,7 @@ C Project Sync
 Last updated: 2026-09-05
 Maintainer: Zainab's ChatGPT
 Repository: https://github.com/zaynab-3/C.git
-Current branch: feat/gateway-hardening
+Current branch: feat/ai-provider-abstraction
 
 PURPOSE
 
@@ -458,3 +458,116 @@ Automated tests: 17 PASSED
 
 NEXT:
 AI provider abstraction -> Gemini development implementation -> OpenAI-compatible production path.
+
+
+AI PROVIDER ABSTRACTION CHECKPOINT
+
+Branch: feat/ai-provider-abstraction
+
+WHAT CHANGED
+
+- Added one AIProvider contract shared by all model vendors.
+- Added GeminiProvider for free development/testing.
+- Added OpenAIProvider for later production use.
+- Provider selection is configuration-driven with AI_PROVIDER.
+- Gemini default development model is gemini-3.8-flash.
+- OpenAI model remains configuration-only until production model selection.
+- Added provider factory and provider-isolation tests.
+
+ARCHITECTURE
+
+C / future LangGraph
+-> AIProvider
+   -> GeminiProvider [development/free testing]
+   -> OpenAIProvider [production later]
+
+IMPORTANT
+
+No OpenAI paid API call is required during development.
+The webhook and worker must not depend on provider-specific SDK APIs.
+Provider-specific code stays behind the AIProvider boundary.
+
+NEXT
+
+- Add a real GEMINI_API_KEY locally only; never commit it.
+- Live-test Gemini through the provider abstraction.
+- Then connect text message processing to the AI provider inside the worker/orchestration layer.
+- LangGraph comes after the provider boundary is live-verified.
+
+LIVE GEMINI PROVIDER CHECKPOINT
+
+WHAT WAS VERIFIED
+
+- Real Gemini API call succeeded through get_ai_provider() -> GeminiProvider -> AIProvider response.
+- Active development provider: Gemini.
+- Active development model: gemini-3.8-flash.
+- Live response returned exactly: C intelligence is online.
+- No OpenAI API call was made.
+
+ARCHITECTURE DECISION
+
+- Gemini automatic function calling is explicitly disabled in the provider.
+- Provider SDKs must not execute C tools directly.
+- Future LangGraph + policy/approval layers own tool selection and execution.
+- Deterministic Python remains responsible for consequential actions.
+
+NEXT
+
+- Connect inbound WhatsApp text processing to AIProvider in the worker.
+- Then add the first text-only LangGraph orchestration layer.
+
+WHATSAPP AI WORKER WIRING CHECKPOINT
+
+WHAT CHANGED
+
+- c.process_message now calls the provider-agnostic AIProvider for inbound WhatsApp text.
+- The generated AI text becomes the outbound WhatsApp reply.
+- The worker receives AI provider/model credentials through Docker Compose environment variables.
+- AIProviderError and WhatsAppSendError are retried with Celery backoff.
+- c.process_message uses late acknowledgement and worker-lost rejection for at-least-once processing.
+- Provider SDK tool execution remains disabled; this stage is text reply only.
+
+WHAT WAS VERIFIED
+
+- Automated tests prove the worker calls AIProvider and sends its returned text.
+- Automated tests prove an AI failure does not send a WhatsApp reply or mark the message processed.
+- Automated tests still protect already-processed messages from duplicate processing.
+
+CURRENT STATUS
+
+LIVE END-TO-END VERIFIED on 2026-09-05.
+
+WHAT WAS VERIFIED
+
+- Real inbound WhatsApp message reached Meta -> FastAPI -> PostgreSQL/outbox -> Celery.
+- c.process_message called Gemini through the provider-agnostic AIProvider.
+- Gemini 3.8 Flash returned HTTP 200.
+- Meta Graph API outbound send returned HTTP 200.
+- The physical WhatsApp phone received C's generated reply.
+- PostgreSQL confirmed processed_at is set.
+- PostgreSQL confirmed outbound_external_id is stored.
+- End-to-end text intelligence path is now live.
+
+LIVE PATH
+
+WhatsApp
+-> Meta Cloud API
+-> C FastAPI gateway
+-> PostgreSQL / transactional outbox
+-> Celery worker
+-> AIProvider
+-> Gemini
+-> Meta Cloud API
+-> WhatsApp
+
+KNOWN RELIABILITY ISSUE
+
+- If Gemini succeeds but Meta outbound sending fails, the current Celery retry reruns the entire message task and calls Gemini again.
+- This can waste AI quota and produce a different reply on retry.
+- Before deeper orchestration, generated AI output should be persisted so Meta delivery can retry independently without regenerating the response.
+
+NEXT
+
+- Harden AI generation vs outbound delivery retry boundaries.
+- Then add the first text-only LangGraph orchestration layer.
+
