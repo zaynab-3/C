@@ -104,6 +104,8 @@ async def test_gemini_provider_generates_text(monkeypatch):
     assert call["model"] == "gemini-test-model"
     assert call["contents"] == "Hello"
     assert call["config"] is not None
+    assert call["config"].automatic_function_calling is not None
+    assert call["config"].automatic_function_calling.disable is True
 
 
 @pytest.mark.anyio

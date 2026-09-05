@@ -35,11 +35,18 @@ class GeminiProvider(AIProvider):
         if not clean_prompt:
             raise AIProviderError("Prompt must not be empty")
 
-        config = None
-        if system_prompt and system_prompt.strip():
-            config = types.GenerateContentConfig(
-                system_instruction=system_prompt.strip()
-            )
+        config = types.GenerateContentConfig(
+            automatic_function_calling=(
+                types.AutomaticFunctionCallingConfig(
+                    disable=True,
+                )
+            ),
+            system_instruction=(
+                system_prompt.strip()
+                if system_prompt and system_prompt.strip()
+                else None
+            ),
+        )
 
         try:
             response = await self._client.aio.models.generate_content(

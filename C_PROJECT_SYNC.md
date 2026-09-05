@@ -493,3 +493,26 @@ NEXT
 - Live-test Gemini through the provider abstraction.
 - Then connect text message processing to the AI provider inside the worker/orchestration layer.
 - LangGraph comes after the provider boundary is live-verified.
+
+LIVE GEMINI PROVIDER CHECKPOINT
+
+WHAT WAS VERIFIED
+
+- Real Gemini API call succeeded through get_ai_provider() -> GeminiProvider -> AIProvider response.
+- Active development provider: Gemini.
+- Active development model: gemini-3.8-flash.
+- Live response returned exactly: C intelligence is online.
+- No OpenAI API call was made.
+
+ARCHITECTURE DECISION
+
+- Gemini automatic function calling is explicitly disabled in the provider.
+- Provider SDKs must not execute C tools directly.
+- Future LangGraph + policy/approval layers own tool selection and execution.
+- Deterministic Python remains responsible for consequential actions.
+
+NEXT
+
+- Connect inbound WhatsApp text processing to AIProvider in the worker.
+- Then add the first text-only LangGraph orchestration layer.
+
