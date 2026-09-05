@@ -25,6 +25,11 @@ async def save_message(
         sender_id=message.sender_id,
         content_type=message.content_type,
         content=message.content,
+        media_id=message.media_id,
+        media_mime_type=message.media_mime_type,
+        media_sha256=message.media_sha256,
+        media_filename=message.media_filename,
+        media_is_voice=message.media_is_voice,
         received_at=message.received_at,
         raw_payload=raw_payload,
     )

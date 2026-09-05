@@ -9,6 +9,15 @@ class MetaText(BaseModel):
     body: str
 
 
+class MetaAudio(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    mime_type: str
+    sha256: str
+    voice: bool | None = None
+
+
 class MetaMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -17,6 +26,7 @@ class MetaMessage(BaseModel):
     timestamp: str
     type: str
     text: MetaText | None = None
+    audio: MetaAudio | None = None
 
 
 class MetaValue(BaseModel):

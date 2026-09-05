@@ -3,6 +3,7 @@ from c_backend.ai.base import (
     AIProviderConfigurationError,
     AIProviderError,
     AIResponse,
+    AITranscription,
 )
 from c_backend.ai.factory import get_ai_provider
 
@@ -11,5 +12,6 @@ __all__ = [
     "AIProviderConfigurationError",
     "AIProviderError",
     "AIResponse",
+    "AITranscription",
     "get_ai_provider",
 ]
