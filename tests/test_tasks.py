@@ -1,11 +1,12 @@
 import uuid
 from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 import c_backend.tasks as tasks_module
 from c_backend.ai import AIProviderError
+from c_backend.orchestration import text as text_module
 from c_backend.whatsapp_client import WhatsAppSendError
 
 
@@ -58,6 +59,8 @@ def make_message(**overrides):
 async def test_worker_persists_ai_reply_and_queues_delivery(
     monkeypatch,
 ):
+    graph_mock = AsyncMock(wraps=tasks_module.run_text_graph)
+    monkeypatch.setattr(tasks_module, "run_text_graph", graph_mock)
     message = make_message()
     fake_session = FakeSession(message)
 
@@ -80,7 +83,7 @@ async def test_worker_persists_ai_reply_and_queues_delivery(
         )
     )
     monkeypatch.setattr(
-        tasks_module,
+        text_module,
         "get_ai_provider",
         provider_factory,
     )
@@ -104,10 +107,16 @@ async def test_worker_persists_ai_reply_and_queues_delivery(
         external_id="wamid.worker.test",
     )
 
+    graph_mock.assert_awaited_once()
     provider_factory.assert_called_once_with()
     generate_mock.assert_awaited_once_with(
         "Hello C",
-        system_prompt=ANY,
+        system_prompt=(
+            "You are C, a reliable WhatsApp-first assistant. "
+            "Reply directly and concisely to the user's message. "
+            "Do not claim that you performed external actions. "
+            "Tool execution is not available at this stage."
+        ),
     )
     send_mock.assert_not_awaited()
 
@@ -150,9 +159,11 @@ async def test_worker_reuses_persisted_reply_without_ai(
         lambda: fake_session,
     )
 
+    graph_mock = AsyncMock(side_effect=AssertionError("Unexpected regeneration"))
+    monkeypatch.setattr(tasks_module, "run_text_graph", graph_mock)
     provider_factory = Mock()
     monkeypatch.setattr(
-        tasks_module,
+        text_module,
         "get_ai_provider",
         provider_factory,
     )
@@ -169,6 +180,7 @@ async def test_worker_reuses_persisted_reply_without_ai(
         external_id=message.external_id,
     )
 
+    graph_mock.assert_not_awaited()
     provider_factory.assert_not_called()
     assert fake_session.added == []
     fake_session.commit.assert_not_awaited()
@@ -194,11 +206,13 @@ async def test_worker_ai_failure_does_not_persist_or_queue(
         lambda: fake_session,
     )
 
+    send_mock = AsyncMock()
+    monkeypatch.setattr(tasks_module, "send_whatsapp_text", send_mock)
     generate_mock = AsyncMock(
         side_effect=AIProviderError("temporary AI outage")
     )
     monkeypatch.setattr(
-        tasks_module,
+        text_module,
         "get_ai_provider",
         Mock(
             return_value=SimpleNamespace(
@@ -225,7 +239,13 @@ async def test_worker_ai_failure_does_not_persist_or_queue(
 
     fake_session.commit.assert_not_awaited()
     assert fake_session.added == []
+    generate_mock.assert_awaited_once()
+    send_mock.assert_not_awaited()
     assert message.generated_reply is None
+    assert message.ai_provider is None
+    assert message.ai_model is None
+    assert message.ai_generated_at is None
+    assert message.outbound_external_id is None
     assert message.processed_at is None
     dispose_mock.assert_awaited_once()
 
@@ -248,9 +268,11 @@ async def test_sender_uses_saved_reply_and_marks_delivered(
         lambda: fake_session,
     )
 
+    graph_mock = AsyncMock(side_effect=AssertionError("Unexpected regeneration"))
+    monkeypatch.setattr(tasks_module, "run_text_graph", graph_mock)
     provider_factory = Mock()
     monkeypatch.setattr(
-        tasks_module,
+        text_module,
         "get_ai_provider",
         provider_factory,
     )
@@ -276,6 +298,7 @@ async def test_sender_uses_saved_reply_and_marks_delivered(
         external_id=message.external_id,
     )
 
+    graph_mock.assert_not_awaited()
     provider_factory.assert_not_called()
     send_mock.assert_awaited_once_with(
         to="96170123456",
@@ -306,6 +329,8 @@ async def test_sender_failure_keeps_saved_reply_for_retry(
         lambda: fake_session,
     )
 
+    graph_mock = AsyncMock(side_effect=AssertionError("Unexpected regeneration"))
+    monkeypatch.setattr(tasks_module, "run_text_graph", graph_mock)
     send_mock = AsyncMock(
         side_effect=WhatsAppSendError(
             "temporary Meta failure"
@@ -337,6 +362,7 @@ async def test_sender_failure_keeps_saved_reply_for_retry(
         to="96170123456",
         body="Persisted C reply.",
     )
+    graph_mock.assert_not_awaited()
     assert message.generated_reply == "Persisted C reply."
     assert message.processed_at is None
     assert message.outbound_external_id is None
