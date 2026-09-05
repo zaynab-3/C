@@ -21,8 +21,14 @@ class Settings(BaseSettings):
         validation_alias="CELERY_BROKER_URL"
     )
 
-    whatsapp_verify_token: str = Field(
-        validation_alias="WHATSAPP_VERIFY_TOKEN"
+    whatsapp_verify_token: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_VERIFY_TOKEN",
+    )
+
+    whatsapp_app_secret: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_APP_SECRET",
     )
 
 

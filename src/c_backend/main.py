@@ -1,7 +1,14 @@
 import secrets
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+)
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +24,7 @@ from c_backend.schemas.whatsapp import (
     NormalizedMessage,
     WhatsAppWebhookResponse,
 )
+from c_backend.security import verify_meta_signature
 from c_backend.tasks import process_message
 
 
@@ -50,6 +58,12 @@ async def verify_whatsapp_webhook(
 ) -> PlainTextResponse:
     settings = get_settings()
 
+    if not settings.whatsapp_verify_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook verification is not configured",
+        )
+
     valid_mode = mode == "subscribe"
     valid_token = secrets.compare_digest(
         verify_token,
@@ -68,12 +82,41 @@ async def verify_whatsapp_webhook(
     )
 
 
+async def require_valid_meta_signature(
+    request: Request,
+    signature: Annotated[
+        str | None,
+        Header(alias="X-Hub-Signature-256"),
+    ] = None,
+) -> None:
+    settings = get_settings()
+
+    if not settings.whatsapp_app_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook signature verification is not configured",
+        )
+
+    body = await request.body()
+
+    if not verify_meta_signature(
+        body=body,
+        signature=signature,
+        app_secret=settings.whatsapp_app_secret,
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid webhook signature",
+        )
+
+
 @app.post(
     "/webhooks/whatsapp",
     response_model=WhatsAppWebhookResponse,
 )
 async def receive_whatsapp_message(
     event: MockWhatsAppTextEvent,
+    _signature: None = Depends(require_valid_meta_signature),
     session: AsyncSession = Depends(get_db_session),
 ) -> WhatsAppWebhookResponse:
     message = NormalizedMessage(
