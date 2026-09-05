@@ -12,11 +12,7 @@ class WhatsAppSendError(RuntimeError):
     pass
 
 
-async def send_whatsapp_template(
-    to: str,
-    template_name: str,
-    language_code: str = "en_US",
-) -> str:
+async def _send_payload(payload: dict[str, Any]) -> str:
     settings = get_settings()
 
     if not settings.whatsapp_access_token:
@@ -34,18 +30,6 @@ async def send_whatsapp_template(
         f"{GRAPH_API_VERSION}/"
         f"{settings.whatsapp_phone_number_id}/messages"
     )
-
-    payload: dict[str, Any] = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {
-                "code": language_code,
-            },
-        },
-    }
 
     headers = {
         "Authorization": (
@@ -78,3 +62,41 @@ async def send_whatsapp_template(
         )
 
     return str(messages[0]["id"])
+
+
+async def send_whatsapp_template(
+    to: str,
+    template_name: str,
+    language_code: str = "en_US",
+) -> str:
+    payload: dict[str, Any] = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {
+                "code": language_code,
+            },
+        },
+    }
+
+    return await _send_payload(payload)
+
+
+async def send_whatsapp_text(
+    to: str,
+    body: str,
+) -> str:
+    payload: dict[str, Any] = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "text",
+        "text": {
+            "preview_url": False,
+            "body": body,
+        },
+    }
+
+    return await _send_payload(payload)

@@ -7,6 +7,7 @@ import c_backend.whatsapp_client as whatsapp_client
 from c_backend.whatsapp_client import (
     WhatsAppSendError,
     send_whatsapp_template,
+    send_whatsapp_text,
 )
 
 
@@ -165,3 +166,54 @@ async def test_meta_error_becomes_whatsapp_send_error(
             to="96170123456",
             template_name="hello_world",
         )
+
+
+
+@pytest.mark.anyio
+async def test_send_whatsapp_text_success(monkeypatch):
+    use_test_settings(monkeypatch)
+
+    real_async_client = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+
+        assert payload == {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": "96170123456",
+            "type": "text",
+            "text": {
+                "preview_url": False,
+                "body": "Hello from C",
+            },
+        }
+
+        return httpx.Response(
+            200,
+            json={
+                "messages": [
+                    {
+                        "id": "wamid.test.text",
+                    }
+                ]
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+
+    monkeypatch.setattr(
+        whatsapp_client.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_async_client(
+            transport=transport,
+            **kwargs,
+        ),
+    )
+
+    message_id = await send_whatsapp_text(
+        to="96170123456",
+        body="Hello from C",
+    )
+
+    assert message_id == "wamid.test.text"
