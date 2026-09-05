@@ -18,6 +18,7 @@ class FakeResult:
 class FakeSession:
     def __init__(self, message):
         self.message = message
+        self.commit = AsyncMock()
 
     async def __aenter__(self):
         return self
@@ -41,12 +42,16 @@ async def test_worker_automatically_replies_to_whatsapp(
         external_id="wamid.worker.test",
         sender_id="96170123456",
         content="Hello C",
+        processed_at=None,
+        outbound_external_id=None,
     )
+
+    fake_session = FakeSession(message)
 
     monkeypatch.setattr(
         tasks_module,
         "AsyncSessionLocal",
-        lambda: FakeSession(message),
+        lambda: fake_session,
     )
 
     send_mock = AsyncMock(
@@ -77,6 +82,65 @@ async def test_worker_automatically_replies_to_whatsapp(
         body="C received your message automatically.",
     )
 
+    assert message.processed_at is not None
+    assert (
+        message.outbound_external_id
+        == "wamid.outbound.test"
+    )
+
+    fake_session.commit.assert_awaited_once()
     dispose_mock.assert_awaited_once()
 
     assert result == f"processed message {message_id}"
+
+
+@pytest.mark.anyio
+async def test_worker_skips_already_processed_message(
+    monkeypatch,
+):
+    message_id = uuid.uuid4()
+
+    message = SimpleNamespace(
+        id=message_id,
+        channel="whatsapp",
+        external_id="wamid.worker.duplicate",
+        sender_id="96170123456",
+        content="Hello again",
+        processed_at=object(),
+        outbound_external_id="wamid.already.sent",
+    )
+
+    fake_session = FakeSession(message)
+
+    monkeypatch.setattr(
+        tasks_module,
+        "AsyncSessionLocal",
+        lambda: fake_session,
+    )
+
+    send_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        tasks_module,
+        "send_whatsapp_text",
+        send_mock,
+    )
+
+    dispose_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        tasks_module,
+        "engine",
+        SimpleNamespace(dispose=dispose_mock),
+    )
+
+    result = await tasks_module._process_message(
+        channel="whatsapp",
+        external_id="wamid.worker.duplicate",
+    )
+
+    send_mock.assert_not_awaited()
+    fake_session.commit.assert_not_awaited()
+    dispose_mock.assert_awaited_once()
+
+    assert result == f"already processed message {message_id}"

@@ -14,6 +14,13 @@ celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
+    timezone="UTC",
+    beat_schedule={
+        "dispatch-outbox-every-second": {
+            "task": "c.dispatch_outbox",
+            "schedule": 1.0,
+        },
+    },
 )
 
 celery_app.autodiscover_tasks(

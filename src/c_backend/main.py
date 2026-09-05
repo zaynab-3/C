@@ -25,7 +25,6 @@ from c_backend.schemas.meta_whatsapp import (
     MetaWhatsAppWebhook,
 )
 from c_backend.security import verify_meta_signature
-from c_backend.tasks import process_message
 
 
 class HealthResponse(BaseModel):
@@ -143,11 +142,6 @@ async def receive_whatsapp_message(
 
         if result == SaveMessageResult.STORED:
             stored += 1
-
-            process_message.delay(
-                message.channel,
-                message.external_id,
-            )
 
             queued += 1
 

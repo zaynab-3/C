@@ -2,7 +2,7 @@ import copy
 import hashlib
 import hmac
 import json
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -99,17 +99,10 @@ def test_new_webhook_is_stored_and_queued(monkeypatch):
     save_mock = AsyncMock(
         return_value=SaveMessageResult.STORED
     )
-    delay_mock = Mock()
-
     monkeypatch.setattr(
         main_module,
         "save_message",
         save_mock,
-    )
-    monkeypatch.setattr(
-        main_module.process_message,
-        "delay",
-        delay_mock,
     )
 
     response = signed_post(VALID_META_PAYLOAD)
@@ -125,11 +118,6 @@ def test_new_webhook_is_stored_and_queued(monkeypatch):
     assert data["ignored"] == 0
     assert data["queued"] == 1
 
-    delay_mock.assert_called_once_with(
-        "whatsapp",
-        "wamid.test.001",
-    )
-
 
 def test_duplicate_webhook_is_not_queued(monkeypatch):
     use_test_settings(monkeypatch)
@@ -137,17 +125,10 @@ def test_duplicate_webhook_is_not_queued(monkeypatch):
     save_mock = AsyncMock(
         return_value=SaveMessageResult.DUPLICATE
     )
-    delay_mock = Mock()
-
     monkeypatch.setattr(
         main_module,
         "save_message",
         save_mock,
-    )
-    monkeypatch.setattr(
-        main_module.process_message,
-        "delay",
-        delay_mock,
     )
 
     response = signed_post(VALID_META_PAYLOAD)
@@ -163,24 +144,16 @@ def test_duplicate_webhook_is_not_queued(monkeypatch):
     assert data["ignored"] == 0
     assert data["queued"] == 0
 
-    delay_mock.assert_not_called()
 
 
 def test_unauthorized_sender_is_ignored(monkeypatch):
     use_test_settings(monkeypatch)
 
     save_mock = AsyncMock()
-    delay_mock = Mock()
-
     monkeypatch.setattr(
         main_module,
         "save_message",
         save_mock,
-    )
-    monkeypatch.setattr(
-        main_module.process_message,
-        "delay",
-        delay_mock,
     )
 
     payload = copy.deepcopy(VALID_META_PAYLOAD)
@@ -202,7 +175,6 @@ def test_unauthorized_sender_is_ignored(monkeypatch):
     assert data["queued"] == 0
 
     save_mock.assert_not_called()
-    delay_mock.assert_not_called()
 
 
 def test_invalid_webhook_returns_422(monkeypatch):

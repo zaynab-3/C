@@ -5,7 +5,7 @@ from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from c_backend.models import Message
+from c_backend.models import Message, OutboxEvent
 from c_backend.schemas.whatsapp import NormalizedMessage
 
 
@@ -32,7 +32,11 @@ async def save_message(
     session.add(record)
 
     try:
-        await session.commit()
+        # Force the message INSERT first, but DO NOT commit yet.
+        # This lets us detect duplicate WhatsApp message IDs before
+        # creating the matching outbox event.
+        await session.flush()
+
     except IntegrityError as exc:
         await session.rollback()
 
@@ -43,6 +47,29 @@ async def save_message(
         ):
             return SaveMessageResult.DUPLICATE
 
+        raise
+
+    outbox_event = OutboxEvent(
+        event_key=(
+            f"process_message:"
+            f"{message.channel}:"
+            f"{message.external_id}"
+        ),
+        event_type="process_message",
+        payload={
+            "channel": message.channel,
+            "external_id": message.external_id,
+        },
+    )
+
+    session.add(outbox_event)
+
+    try:
+        # Message + outbox event become durable together.
+        await session.commit()
+
+    except Exception:
+        await session.rollback()
         raise
 
     return SaveMessageResult.STORED
