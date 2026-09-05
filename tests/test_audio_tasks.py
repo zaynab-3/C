@@ -31,6 +31,8 @@ def audio_worker(monkeypatch):
             return False
 
         async def execute(self, statement):
+            if statement._for_update_arg is None:
+                return SimpleNamespace(all=lambda: [])
             assert statement._for_update_arg is not None
             reads.append(statement.get_execution_options())
             self.message = copy.deepcopy(database)

@@ -1,15 +1,18 @@
 """A stateless text graph; the worker owns persistence and retries."""
 
+from collections.abc import Sequence
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from c_backend.ai import get_ai_provider
+from c_backend.conversation import ConversationEntry, build_conversation_prompt
 
 
 class TextInput(TypedDict):
     input_text: str
+    history: list[ConversationEntry]
 
 
 class TextResult(TypedDict):
@@ -32,7 +35,7 @@ async def generate_response(
 ) -> TextResult:
     provider = get_ai_provider()
     response = await provider.generate_text(
-        state["input_text"],
+        build_conversation_prompt(state["input_text"], state["history"]),
         system_prompt=runtime.context["system_prompt"],
     )
     return {
@@ -58,8 +61,9 @@ async def run_text_graph(
     input_text: str,
     *,
     system_prompt: str,
+    history: Sequence[ConversationEntry] = (),
 ) -> TextResult:
     return await _text_graph.ainvoke(
-        {"input_text": input_text},
+        {"input_text": input_text, "history": list(history)},
         context={"system_prompt": system_prompt},
     )
