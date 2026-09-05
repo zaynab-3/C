@@ -85,3 +85,48 @@ def test_invalid_webhook_returns_422():
     )
 
     assert response.status_code == 422
+
+
+def test_meta_webhook_verification_success(monkeypatch):
+    class FakeSettings:
+        whatsapp_verify_token = "test-verify-token"
+
+    monkeypatch.setattr(
+        main_module,
+        "get_settings",
+        lambda: FakeSettings(),
+    )
+
+    response = client.get(
+        "/webhooks/whatsapp",
+        params={
+            "hub.mode": "subscribe",
+            "hub.verify_token": "test-verify-token",
+            "hub.challenge": "654321",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.text == "654321"
+
+
+def test_meta_webhook_verification_rejects_wrong_token(monkeypatch):
+    class FakeSettings:
+        whatsapp_verify_token = "test-verify-token"
+
+    monkeypatch.setattr(
+        main_module,
+        "get_settings",
+        lambda: FakeSettings(),
+    )
+
+    response = client.get(
+        "/webhooks/whatsapp",
+        params={
+            "hub.mode": "subscribe",
+            "hub.verify_token": "wrong-token",
+            "hub.challenge": "654321",
+        },
+    )
+
+    assert response.status_code == 403

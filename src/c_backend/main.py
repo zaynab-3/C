@@ -1,9 +1,12 @@
+import secrets
 from typing import Literal
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from c_backend.config import get_settings
 from c_backend.db import get_db_session
 from c_backend.repositories.messages import (
     SaveMessageResult,
@@ -33,6 +36,35 @@ async def health_check() -> HealthResponse:
     return HealthResponse(
         status="ok",
         service="c-backend",
+    )
+
+
+@app.get(
+    "/webhooks/whatsapp",
+    response_class=PlainTextResponse,
+)
+async def verify_whatsapp_webhook(
+    mode: str = Query(alias="hub.mode"),
+    verify_token: str = Query(alias="hub.verify_token"),
+    challenge: str = Query(alias="hub.challenge"),
+) -> PlainTextResponse:
+    settings = get_settings()
+
+    valid_mode = mode == "subscribe"
+    valid_token = secrets.compare_digest(
+        verify_token,
+        settings.whatsapp_verify_token,
+    )
+
+    if not valid_mode or not valid_token:
+        raise HTTPException(
+            status_code=403,
+            detail="Webhook verification failed",
+        )
+
+    return PlainTextResponse(
+        content=challenge,
+        status_code=200,
     )
 
 

@@ -21,6 +21,10 @@ class Settings(BaseSettings):
         validation_alias="CELERY_BROKER_URL"
     )
 
+    whatsapp_verify_token: str = Field(
+        validation_alias="WHATSAPP_VERIFY_TOKEN"
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:
