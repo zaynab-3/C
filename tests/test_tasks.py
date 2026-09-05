@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -31,6 +32,8 @@ class FakeSession:
         return False
 
     async def execute(self, statement):
+        if statement._for_update_arg is None:
+            return SimpleNamespace(all=lambda: [])
         return FakeResult(self.message)
 
     def add(self, value):
@@ -45,6 +48,8 @@ def make_message(**overrides):
         "sender_id": "96170123456",
         "content": "Hello C",
         "content_type": "text",
+        "received_at": datetime(2026, 9, 5, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 9, 5, tzinfo=timezone.utc),
         "generated_reply": None,
         "ai_provider": None,
         "ai_model": None,

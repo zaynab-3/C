@@ -5,9 +5,11 @@ from sqlalchemy import select
 
 from c_backend.ai import AIProviderError, get_ai_provider
 from c_backend.celery_app import celery_app
+from c_backend.config import get_settings
 from c_backend.db import AsyncSessionLocal, engine
 from c_backend.models import Message, OutboxEvent
 from c_backend.orchestration import run_text_graph
+from c_backend.repositories.conversation import load_recent_conversation
 from c_backend.whatsapp_media import WhatsAppMediaError, download_whatsapp_audio
 from c_backend.whatsapp_client import (
     WhatsAppSendError,
@@ -101,8 +103,14 @@ async def _process_message(
                     f"{message.content}"
                 )
 
+                history = await load_recent_conversation(
+                    session,
+                    message,
+                    limit=get_settings().conversation_history_limit,
+                )
                 graph_result = await run_text_graph(
                     input_text,
+                    history=history,
                     system_prompt=(
                         "You are C, a reliable WhatsApp-first assistant. "
                         "Reply directly and concisely to the user's message. "

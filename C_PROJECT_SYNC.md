@@ -3,7 +3,7 @@ C Project Sync
 Last updated: 2026-09-05
 Maintainer: Zainab's ChatGPT
 Repository: https://github.com/zaynab-3/C.git
-Current branch: feat/whatsapp-audio-input
+Current branch: feat/conversation-context
 
 PURPOSE
 
@@ -29,6 +29,11 @@ Use ASCII -> in this file to avoid encoding corruption.
 
 CURRENT CHECKPOINT
 
+Bounded conversation context is implemented and unit-tested on this branch.
+LIVE CONVERSATION CONTEXT E2E: VERIFIED.
+History comes from existing Message records; there is no long-term memory or
+LangGraph checkpointer. See CONVERSATION CONTEXT CHECKPOINT below.
+
 WhatsApp audio input is complete and live E2E verified for English voice notes.
 The text flow remains working. See WHATSAPP AUDIO INPUT CHECKPOINT for the
 branch-close verification record and the separate Meta authorization incident.
@@ -50,6 +55,7 @@ Phone
 -> c.dispatch_outbox
 -> Redis / Celery
 -> c.process_message
+-> current text or persisted audio transcript + bounded Message history
 -> stateless text LangGraph (START -> generate_response -> END)
 -> AIProvider / configured Gemini or OpenAI provider
 -> generated reply + AI metadata persisted
@@ -149,7 +155,7 @@ Tests
 
 Latest complete test run:
 
-88 passed
+108 passed
 1 dependency deprecation warning
 
 Warnings are from dependencies and are not project failures.
@@ -790,3 +796,132 @@ Conversation context is next. Long-term memory is not part of that next checkpoi
 No conversation-context implementation or new branch is started by this closing work.
 This branch is not merged to main as part of closing.
 No images, documents, tools, policy, approvals, calls, TTS or voice replies were added.
+
+
+CONVERSATION CONTEXT CHECKPOINT
+
+Branch: feat/conversation-context
+Implementation status: implemented and unit-tested; ready for review.
+LIVE CONVERSATION CONTEXT E2E: VERIFIED.
+
+ARCHITECTURE
+
+Current Message
+-> current text content or durably persisted audio transcript
+-> bounded previous Message records using the current async SQLAlchemy session
+-> chronological ConversationEntry(role, content) values
+-> run_text_graph(input_text, history=..., system_prompt=...)
+-> existing AIProvider.generate_text()
+-> existing generated reply + delivery outbox transaction
+-> existing independent WhatsApp delivery task
+
+The application's PostgreSQL Message table is the only history source. The graph
+remains stateless between invocations. No LangGraph checkpointer, checkpoint-postgres
+package, second persistence store, new graph node or migration was added.
+There is no long-term memory, summarization or image/document context in this checkpoint.
+Future extracted modality text should feed the same provider-independent
+ConversationEntry abstraction; those modalities are not implemented now.
+
+HISTORY SELECTION / LIMIT
+
+- Same channel and same sender_id only; current message ID is explicitly excluded.
+- Only rows strictly before the current (received_at, created_at, id) tuple qualify.
+- received_at defines chronological order; created_at and UUID id break ties.
+  This is deterministic when timestamps match, without claiming UUIDs encode time.
+- SQL orders newest-first and applies LIMIT before loading rows. The bounded result
+  is reversed to chronological order before producing user/assistant entries.
+- CONVERSATION_HISTORY_LIMIT defaults to 10 previous Message records, accepts 0-50,
+  and is passed through the Docker worker environment. Zero disables the history query.
+- Each record contributes at most two entries: user content followed by a saved reply.
+  The default therefore supplies at most 20 history entries plus the current input.
+- The limit counts Message records, including records with missing usable text.
+
+NORMALIZATION / PROVIDER INPUT
+
+- Historical text uses content; historical audio uses transcript, never content/media ID.
+- Missing/blank audio transcripts contribute no invented user text.
+- Nonblank persisted generated_reply becomes an assistant entry only after successful
+  outbound delivery is persisted (processed_at is set). Pending/failed outbound replies
+  are excluded so C does not act as though the user saw a reply they never received.
+  Missing assistant replies are not fabricated.
+- Unsupported modalities contribute no entries.
+- Only content_type, content, transcript and generated_reply are selected as history
+  data. Identifiers, sender metadata, raw webhook payload, media bytes and media URLs
+  are not serialized into the prompt.
+- Nonempty history is serialized as role-labeled JSON explicitly described as untrusted
+  conversation data, with a separate current_user_message object. JSON escaping keeps
+  embedded quotes/newlines from changing that structure.
+- History is never placed in the system prompt. The exact existing system prompt and
+  AIProvider interface remain unchanged; provider SDK tool execution remains disabled.
+- With no history, the provider receives the current text exactly as before.
+
+RELIABILITY / KNOWN LIMITATIONS
+
+- Transcript commits and subsequent lock reacquisition still precede history loading.
+- Saved generated replies skip history loading, transcription and graph generation.
+- Generated reply metadata and send_whatsapp_reply outbox remain one transaction.
+- Delivery retries only send the saved reply; they do not query context or regenerate.
+- Generated-but-not-yet-delivered replies are excluded from assistant conversation context.
+- Existing row-lock, AI/media retry, delivery retry and duplicate behavior is unchanged.
+- There is no per-sender processing serialization. Context reflects available persisted
+  state at query time; an earlier turn still generating may have no assistant entry.
+  A generation retry can see newly persisted history. No snapshot is persisted for it.
+- Bounds are by record count, not tokens/characters or elapsed time. Large transcripts
+  can still produce large prompts; no summarization or final token-budget policy exists.
+- No new history index is added. The SQL result is bounded, but query cost as Message
+  volume grows should be reviewed before scaling.
+- Existing external-call row-lock duration and at-least-once delivery risks remain.
+
+VALIDATION
+
+- Full pytest suite: 108 passed; one existing Starlette/AnyIO deprecation warning.
+- Query tests execute the selection SQL against a local in-memory SQLite table with
+  relevant schema columns; PostgreSQL SQL compilation is checked as well.
+- Tests cover sender/channel isolation, current/future exclusion, timestamp/UUID ties,
+  SQL limits, chronological roles, text/audio normalization and incomplete prior turns.
+- Worker-to-real-graph tests cover text->text, text->audio, audio->text and audio->audio.
+- Structural regressions verify the previous exchange for 'Btehkini m3arab?' followed
+  by 'Ane benet', and the text/audio 'cedar' follow-up. No real model response is claimed.
+- Tests verify role-safe JSON structure, unchanged system prompt, invocation isolation,
+  saved-reply reuse and delivery retries without context loading or regeneration.
+- Existing text and audio reliability tests remain passing.
+- Tests ran with mocked providers/HTTP and dummy settings outside the repository cwd,
+  avoiding the real .env. No live external APIs or development database were used.
+- git diff --check passed. No migration changes or dependency additions.
+
+LIVE WHATSAPP VERIFICATION
+
+Conversation context is live E2E verified on WhatsApp.
+
+Verified paths:
+- text -> text: PASS
+- text -> voice: PASS
+- voice -> text: PASS
+- voice -> voice: PASS
+
+Regression verification:
+- A prior Arabic/Arabizi exchange used masculine wording.
+- Another full turn occurred afterward.
+- The user then corrected with "Bas ana benettt".
+- C used the recent conversation context and switched to feminine wording.
+- This verifies that correction understanding survives an intervening turn.
+
+Cross-modal verification:
+- A typed test word was recalled from a later voice-note question.
+- A voice-note test word was recalled from a later typed question.
+- A voice-note test word ("maple") was recalled from a later voice-note question.
+
+Known transcription-quality note:
+- One mixed Arabic/English voice test intended as "olive" was transcribed as the
+  Arabic phonetic form "????".
+- The later context recall reproduced that persisted transcript correctly.
+- This is a transcription-fidelity issue, not a conversation-context failure.
+
+This checkpoint remains short-term/recent conversation context only.
+It is not long-term memory.
+Images and documents are not implemented yet.
+
+NEXT
+
+Close and commit the conversation-context branch after final validation.
+Do not start long-term memory or the next feature in this checkpoint.

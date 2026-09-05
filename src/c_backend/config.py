@@ -22,6 +22,13 @@ class Settings(BaseSettings):
         validation_alias="CELERY_BROKER_URL"
     )
 
+    conversation_history_limit: int = Field(
+        default=10,
+        ge=0,
+        le=50,
+        validation_alias="CONVERSATION_HISTORY_LIMIT",
+    )
+
     whatsapp_verify_token: str | None = Field(
         default=None,
         validation_alias="WHATSAPP_VERIFY_TOKEN",
