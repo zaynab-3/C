@@ -21,6 +21,39 @@ class Settings(BaseSettings):
         validation_alias="CELERY_BROKER_URL"
     )
 
+    whatsapp_verify_token: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_VERIFY_TOKEN",
+    )
+
+    whatsapp_app_secret: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_APP_SECRET",
+    )
+
+    whatsapp_allowed_senders_raw: str = Field(
+        default="",
+        validation_alias="WHATSAPP_ALLOWED_SENDERS",
+    )
+
+    whatsapp_access_token: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_ACCESS_TOKEN",
+    )
+
+    whatsapp_phone_number_id: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_PHONE_NUMBER_ID",
+    )
+
+    @property
+    def whatsapp_allowed_senders(self) -> set[str]:
+        return {
+            sender.strip()
+            for sender in self.whatsapp_allowed_senders_raw.split(",")
+            if sender.strip()
+        }
+
 
 @lru_cache
 def get_settings() -> Settings:

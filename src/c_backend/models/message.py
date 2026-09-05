@@ -59,6 +59,16 @@ class Message(Base):
         nullable=False,
     )
 
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    outbound_external_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
