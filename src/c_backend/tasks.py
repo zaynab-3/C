@@ -3,10 +3,14 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
+from c_backend.ai import AIProviderError, get_ai_provider
 from c_backend.celery_app import celery_app
 from c_backend.db import AsyncSessionLocal, engine
 from c_backend.models import Message, OutboxEvent
-from c_backend.whatsapp_client import send_whatsapp_text
+from c_backend.whatsapp_client import (
+    WhatsAppSendError,
+    send_whatsapp_text,
+)
 
 
 async def _process_message(
@@ -50,13 +54,30 @@ async def _process_message(
             outbound_id = None
 
             if channel == "whatsapp":
+                if not message.content or not message.content.strip():
+                    raise ValueError(
+                        "WhatsApp text message has no content"
+                    )
+
+                provider = get_ai_provider()
+                ai_response = await provider.generate_text(
+                    message.content,
+                    system_prompt=(
+                        "You are C, a reliable WhatsApp-first assistant. "
+                        "Reply directly and concisely to the user's message. "
+                        "Do not claim that you performed external actions. "
+                        "Tool execution is not available at this stage."
+                    ),
+                )
+
                 outbound_id = await send_whatsapp_text(
                     to=message.sender_id,
-                    body="C received your message automatically.",
+                    body=ai_response.text,
                 )
 
                 print(
-                    f"C automatic WhatsApp reply sent: "
+                    f"C AI WhatsApp reply sent via "
+                    f"{ai_response.provider}/{ai_response.model}: "
                     f"{outbound_id}"
                 )
 
@@ -71,7 +92,16 @@ async def _process_message(
         await engine.dispose()
 
 
-@celery_app.task(name="c.process_message")
+@celery_app.task(
+    name="c.process_message",
+    autoretry_for=(AIProviderError, WhatsAppSendError),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=5,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def process_message(
     channel: str,
     external_id: str,

@@ -516,3 +516,30 @@ NEXT
 - Connect inbound WhatsApp text processing to AIProvider in the worker.
 - Then add the first text-only LangGraph orchestration layer.
 
+WHATSAPP AI WORKER WIRING CHECKPOINT
+
+WHAT CHANGED
+
+- c.process_message now calls the provider-agnostic AIProvider for inbound WhatsApp text.
+- The generated AI text becomes the outbound WhatsApp reply.
+- The worker receives AI provider/model credentials through Docker Compose environment variables.
+- AIProviderError and WhatsAppSendError are retried with Celery backoff.
+- c.process_message uses late acknowledgement and worker-lost rejection for at-least-once processing.
+- Provider SDK tool execution remains disabled; this stage is text reply only.
+
+WHAT WAS VERIFIED
+
+- Automated tests prove the worker calls AIProvider and sends its returned text.
+- Automated tests prove an AI failure does not send a WhatsApp reply or mark the message processed.
+- Automated tests still protect already-processed messages from duplicate processing.
+
+CURRENT STATUS
+
+Code-level wiring is complete. Live WhatsApp -> Gemini -> WhatsApp phone verification is still pending.
+
+NEXT
+
+- Rebuild/recreate the Docker worker so it receives Gemini configuration.
+- Send one real WhatsApp text to C.
+- Verify worker logs, Meta outbound success, database processed state, and physical phone reply.
+
