@@ -261,3 +261,33 @@ The GitHub repository is the common technical reference between both sides.
 ### NEXT RECOMMENDED ACTION
 Start the real Meta webhook adapter, beginning with the GET verification handshake, then POST signature verification and real Meta payload parsing.
 
+
+## 2026-09-05 — Meta-shaped E2E inbound checkpoint
+
+### WHAT CHANGED
+- Replaced the old flat mock WhatsApp payload with Meta-style webhook models.
+- Added Meta payload adapter.
+- Added POST X-Hub-Signature-256 verification.
+- Kept the existing PostgreSQL ? Redis ? Celery flow.
+
+### WHAT WAS VERIFIED
+- 7 automated webhook/security tests pass.
+- GET webhook verification works.
+- Missing/invalid POST signatures are rejected.
+- Real Meta-shaped text payload is normalized successfully.
+- End-to-end local signed webhook test returned:
+  - accepted
+  - messages: 1
+  - stored: 1
+  - duplicates: 0
+  - queued: 1
+- Celery worker loaded and processed the stored message successfully.
+
+### CURRENT STATUS
+The inbound gateway is Meta-compatible in local development.
+
+It is NOT yet connected to the real Meta WhatsApp Cloud API.
+
+### NEXT RECOMMENDED ACTION
+Add sender authorization / allowlist before exposing the webhook publicly or connecting a real WhatsApp number.
+
