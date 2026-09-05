@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -43,3 +45,11 @@ class MetaWhatsAppWebhook(BaseModel):
 
     object: str
     entry: list[MetaEntry]
+
+
+class MetaWebhookAck(BaseModel):
+    status: Literal["accepted"]
+    messages: int
+    stored: int
+    duplicates: int
+    queued: int

@@ -28,12 +28,32 @@ async def fake_db_session():
 main_module.app.dependency_overrides[get_db_session] = fake_db_session
 
 
-VALID_PAYLOAD = {
-    "message_id": "wamid.test.001",
-    "sender": "96170123456",
-    "type": "text",
-    "text": "Hello C",
-    "timestamp": "2026-09-05T12:00:00+03:00",
+VALID_META_PAYLOAD = {
+    "object": "whatsapp_business_account",
+    "entry": [
+        {
+            "id": "waba123",
+            "changes": [
+                {
+                    "field": "messages",
+                    "value": {
+                        "messaging_product": "whatsapp",
+                        "messages": [
+                            {
+                                "from": "96170123456",
+                                "id": "wamid.test.001",
+                                "timestamp": "1788600000",
+                                "type": "text",
+                                "text": {
+                                    "body": "Hello C"
+                                },
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+    ],
 }
 
 
@@ -73,20 +93,33 @@ def signed_post(payload: dict):
 def test_new_webhook_is_stored_and_queued(monkeypatch):
     use_test_settings(monkeypatch)
 
-    save_mock = AsyncMock(return_value=SaveMessageResult.STORED)
+    save_mock = AsyncMock(
+        return_value=SaveMessageResult.STORED
+    )
     delay_mock = Mock()
 
-    monkeypatch.setattr(main_module, "save_message", save_mock)
+    monkeypatch.setattr(
+        main_module,
+        "save_message",
+        save_mock,
+    )
     monkeypatch.setattr(
         main_module.process_message,
         "delay",
         delay_mock,
     )
 
-    response = signed_post(VALID_PAYLOAD)
+    response = signed_post(VALID_META_PAYLOAD)
 
     assert response.status_code == 200
-    assert response.json()["status"] == "stored"
+
+    data = response.json()
+
+    assert data["status"] == "accepted"
+    assert data["messages"] == 1
+    assert data["stored"] == 1
+    assert data["duplicates"] == 0
+    assert data["queued"] == 1
 
     delay_mock.assert_called_once_with(
         "whatsapp",
@@ -102,17 +135,28 @@ def test_duplicate_webhook_is_not_queued(monkeypatch):
     )
     delay_mock = Mock()
 
-    monkeypatch.setattr(main_module, "save_message", save_mock)
+    monkeypatch.setattr(
+        main_module,
+        "save_message",
+        save_mock,
+    )
     monkeypatch.setattr(
         main_module.process_message,
         "delay",
         delay_mock,
     )
 
-    response = signed_post(VALID_PAYLOAD)
+    response = signed_post(VALID_META_PAYLOAD)
 
     assert response.status_code == 200
-    assert response.json()["status"] == "duplicate"
+
+    data = response.json()
+
+    assert data["status"] == "accepted"
+    assert data["messages"] == 1
+    assert data["stored"] == 0
+    assert data["duplicates"] == 1
+    assert data["queued"] == 0
 
     delay_mock.assert_not_called()
 
@@ -121,8 +165,30 @@ def test_invalid_webhook_returns_422(monkeypatch):
     use_test_settings(monkeypatch)
 
     invalid_payload = {
-        **VALID_PAYLOAD,
-        "sender": "not-a-phone-number",
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "waba123",
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "messaging_product": "whatsapp",
+                            "messages": [
+                                {
+                                    "id": "wamid.test.001",
+                                    "timestamp": "1788600000",
+                                    "type": "text",
+                                    "text": {
+                                        "body": "Hello C"
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
     }
 
     response = signed_post(invalid_payload)
@@ -168,7 +234,7 @@ def test_post_rejects_missing_signature(monkeypatch):
 
     response = client.post(
         "/webhooks/whatsapp",
-        json=VALID_PAYLOAD,
+        json=VALID_META_PAYLOAD,
     )
 
     assert response.status_code == 401
@@ -179,7 +245,7 @@ def test_post_rejects_invalid_signature(monkeypatch):
 
     response = client.post(
         "/webhooks/whatsapp",
-        json=VALID_PAYLOAD,
+        json=VALID_META_PAYLOAD,
         headers={
             "X-Hub-Signature-256": "sha256=wrong",
         },

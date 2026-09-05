@@ -15,14 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from c_backend.config import get_settings
 from c_backend.db import get_db_session
+from c_backend.meta_adapter import extract_text_messages
 from c_backend.repositories.messages import (
     SaveMessageResult,
     save_message,
 )
-from c_backend.schemas.whatsapp import (
-    MockWhatsAppTextEvent,
-    NormalizedMessage,
-    WhatsAppWebhookResponse,
+from c_backend.schemas.meta_whatsapp import (
+    MetaWebhookAck,
+    MetaWhatsAppWebhook,
 )
 from c_backend.security import verify_meta_signature
 from c_backend.tasks import process_message
@@ -112,35 +112,46 @@ async def require_valid_meta_signature(
 
 @app.post(
     "/webhooks/whatsapp",
-    response_model=WhatsAppWebhookResponse,
+    response_model=MetaWebhookAck,
 )
 async def receive_whatsapp_message(
-    event: MockWhatsAppTextEvent,
+    request: Request,
+    payload: MetaWhatsAppWebhook,
     _signature: None = Depends(require_valid_meta_signature),
     session: AsyncSession = Depends(get_db_session),
-) -> WhatsAppWebhookResponse:
-    message = NormalizedMessage(
-        external_id=event.message_id,
-        channel="whatsapp",
-        sender_id=event.sender,
-        content_type=event.type,
-        content=event.text,
-        received_at=event.timestamp,
-    )
+) -> MetaWebhookAck:
+    raw_payload = await request.json()
 
-    result = await save_message(
-        session=session,
-        message=message,
-        raw_payload=event.model_dump(mode="json"),
-    )
+    messages = extract_text_messages(payload)
 
-    if result == SaveMessageResult.STORED:
-        process_message.delay(
-            message.channel,
-            message.external_id,
+    stored = 0
+    duplicates = 0
+    queued = 0
+
+    for message in messages:
+        result = await save_message(
+            session=session,
+            message=message,
+            raw_payload=raw_payload,
         )
 
-    return WhatsAppWebhookResponse(
-        status=result.value,
-        message=message,
+        if result == SaveMessageResult.STORED:
+            stored += 1
+
+            process_message.delay(
+                message.channel,
+                message.external_id,
+            )
+
+            queued += 1
+
+        elif result == SaveMessageResult.DUPLICATE:
+            duplicates += 1
+
+    return MetaWebhookAck(
+        status="accepted",
+        messages=len(messages),
+        stored=stored,
+        duplicates=duplicates,
+        queued=queued,
     )
