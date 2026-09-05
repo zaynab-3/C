@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from c_backend.config import get_settings
 from c_backend.db import get_db_session
-from c_backend.meta_adapter import extract_text_messages
+from c_backend.meta_adapter import extract_inbound_messages
 from c_backend.repositories.messages import (
     SaveMessageResult,
     save_message,
@@ -122,7 +122,7 @@ async def receive_whatsapp_message(
     settings = get_settings()
     raw_payload = await request.json()
 
-    messages = extract_text_messages(payload)
+    messages = extract_inbound_messages(payload)
 
     stored = 0
     duplicates = 0

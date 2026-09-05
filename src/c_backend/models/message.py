@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,6 +47,42 @@ class Message(Base):
     content: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
+    )
+
+    media_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+    )
+
+    media_mime_type: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+    )
+
+    media_sha256: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+    )
+
+    media_filename: Mapped[str | None] = mapped_column(
+        String(512), nullable=True,
+    )
+
+    media_is_voice: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True,
+    )
+
+    transcript: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+    )
+
+    transcription_provider: Mapped[str | None] = mapped_column(
+        String(50), nullable=True,
+    )
+
+    transcription_model: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+    )
+
+    transcribed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
     )
 
     received_at: Mapped[datetime] = mapped_column(

@@ -17,6 +17,13 @@ class AIResponse:
     model: str
 
 
+@dataclass(frozen=True, slots=True)
+class AITranscription:
+    text: str
+    provider: str
+    model: str
+
+
 class AIProvider(ABC):
     name: str
     model: str
@@ -29,3 +36,13 @@ class AIProvider(ABC):
         system_prompt: str | None = None,
     ) -> AIResponse:
         """Generate a text response using the active provider."""
+
+    async def transcribe_audio(
+        self,
+        audio_bytes: bytes,
+        *,
+        mime_type: str,
+    ) -> AITranscription:
+        raise AIProviderError(
+            f"Audio transcription is not supported by {self.name}"
+        )

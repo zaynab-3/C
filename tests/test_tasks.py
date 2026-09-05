@@ -44,6 +44,7 @@ def make_message(**overrides):
         "external_id": "wamid.worker.test",
         "sender_id": "96170123456",
         "content": "Hello C",
+        "content_type": "text",
         "generated_reply": None,
         "ai_provider": None,
         "ai_model": None,

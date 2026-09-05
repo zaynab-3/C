@@ -3,7 +3,7 @@ C Project Sync
 Last updated: 2026-09-05
 Maintainer: Zainab's ChatGPT
 Repository: https://github.com/zaynab-3/C.git
-Current branch: feat/langgraph-text-orchestration
+Current branch: feat/whatsapp-audio-input
 
 PURPOSE
 
@@ -28,6 +28,10 @@ Do not claim something is implemented unless repository code and/or verification
 Use ASCII -> in this file to avoid encoding corruption.
 
 CURRENT CHECKPOINT
+
+WhatsApp audio input is complete and live E2E verified for English voice notes.
+The text flow remains working. See WHATSAPP AUDIO INPUT CHECKPOINT for the
+branch-close verification record and the separate Meta authorization incident.
 
 The real WhatsApp gateway is connected to Meta WhatsApp Cloud API and has been verified end-to-end with a transactional outbox reliability layer.
 
@@ -145,7 +149,7 @@ Tests
 
 Latest complete test run:
 
-34 passed
+88 passed
 1 dependency deprecation warning
 
 Warnings are from dependencies and are not project failures.
@@ -366,7 +370,7 @@ NOT IMPLEMENTED YET
 
 LangGraph persistence/checkpointing and nodes beyond text generation
 
-audio transcription/processing
+OpenAI audio transcription (Gemini inbound audio is live-verified; see checkpoint below)
 
 image understanding
 
@@ -666,7 +670,7 @@ REVIEW NOTES
 - This checkpoint stops at stateless text orchestration; no further scope is implemented.
 
 
-NEXT MULTIMODAL CHECKPOINT
+HISTORICAL AUDIO CHECKPOINT PLAN (completed below)
 
 Start the first WhatsApp voice-note / audio input path.
 
@@ -682,3 +686,107 @@ WhatsApp voice note
 -> existing durable outbound delivery
 
 Keep text behavior unchanged while adding audio.
+
+
+WHATSAPP AUDIO INPUT CHECKPOINT
+
+Branch: feat/whatsapp-audio-input
+Implementation status: complete, unit-tested and live E2E verified.
+LIVE AUDIO E2E: VERIFIED (at least two English voice notes).
+Lebanese audio: no successful live retest is recorded in this repository.
+
+ARCHITECTURE
+
+WhatsApp audio
+-> authenticated webhook + sender authorization
+-> media metadata + process_message outbox in one transaction
+-> Meta media retrieval (fresh URL, then authenticated bounded download)
+-> AIProvider.transcribe_audio() / Gemini configured model
+-> persisted transcript + transcription metadata (separate commit)
+-> existing text LangGraph
+-> generated reply + send_whatsapp_reply outbox in one transaction
+-> existing durable outbound text delivery
+
+WHAT CHANGED
+
+- Completed the existing 150a3b507d28 migration skeleton; no second migration.
+- Added nine nullable media/transcription columns. Downgrade removes only those columns.
+- Parent revision is cba3814f9172; Alembic reports a single head, 150a3b507d28.
+- Audio webhook metadata is normalized with content=None; text extraction is preserved.
+- Downloads are streamed and capped at MAX_DOWNLOADED_AUDIO_BYTES (14 MiB).
+- Temporary media URLs and audio bytes are not persisted.
+- Bearer authentication is used for both Meta requests; redirects are disabled and
+  download URLs are restricted to HTTPS Meta media domains.
+- Media errors omit response bodies, URLs, tokens and underlying exception details.
+- AITranscription extends the shared provider contract. Gemini sends bytes and their
+  MIME type through the installed google-genai SDK using self.model.
+- The transcription prompt requests only original-language spoken content, without
+  answering the speaker. Automatic function calling remains explicitly disabled.
+- OpenAI text support is unchanged; audio transcription raises a clear unsupported error.
+- The text graph and its exact system prompt are unchanged. No additional graph nodes.
+
+RETRY / CONCURRENCY BEHAVIOR
+
+- A persisted transcript skips media download and transcription on generation retries.
+- The transcript is committed before LangGraph runs; processed_at remains unset.
+- After that commit releases the row lock, the worker locks and refreshes the row,
+  then rechecks generated_reply and processed_at before continuing.
+- A saved generated reply skips all transcription and generation work.
+- AIProviderError and WhatsAppMediaError retry c.process_message only.
+- WhatsAppSendError retries delivery only, reusing the exact saved generated reply.
+
+VALIDATION
+
+- uv run pytest: 88 passed; one existing Starlette/AnyIO deprecation warning.
+- Tests use mocked providers, HTTP transport and database sessions; no live APIs or DB.
+- Tests ran from an isolated temporary directory with dummy DB/broker settings,
+  so importing application settings did not read the repository .env.
+- git diff --check passed.
+- uv run alembic heads and uv run alembic history passed without running migrations.
+- Migration/model parity and exact downgrade columns are unit-tested.
+- Existing text, provider, outbound delivery and dispatcher tests remain passing.
+
+REVIEW RISKS / LIMITS
+
+- External calls still hold row locks, as in the current development architecture.
+- A crash or failed commit after provider transcription but before transcript durability
+  can repeat transcription. Persisted transcripts prevent repeat work on later retries;
+  this is not an exactly-once guarantee for external provider calls.
+- The conservative 14 MiB cap leaves room for inline base64 encoding and request
+  overhead below the 20 MB total request limit; no Gemini Files API is used.
+- Message.media_mime_type preserves the exact inbound Meta MIME. Gemini inline
+  data uses its trimmed, lowercase audio MIME without parameters (for example,
+  audio/ogg; codecs=opus becomes audio/ogg). No transcoding is performed.
+- English voice-note transcription is live-verified; Lebanese transcription remains
+  unverified. No transcoding is implemented.
+- Previously documented at-least-once Meta delivery ambiguity remains unchanged.
+
+LIVE VERIFICATION RECORD
+
+Source: maintainer's branch-close handoff. The closing review used local tests and
+static checks only; it did not rerun live APIs or inspect credentials.
+
+- Migration 150a3b507d28 was applied successfully; alembic current reported
+  150a3b507d28 (head), as confirmed by the maintainer.
+- Docker worker was rebuilt successfully and FastAPI was restarted successfully.
+- The live WhatsApp text precheck passed; existing text flow remains working.
+- At least two English WhatsApp voice notes completed the full audio path:
+  Meta webhook -> media metadata -> media download -> Gemini transcription ->
+  transcript persistence -> text LangGraph -> Gemini response -> durable send
+  outbox -> Meta WhatsApp delivery.
+- Current Gemini development model used: gemini-3.5-flash-lite (configuration-driven).
+- A later Lebanese voice-note attempt stopped at Meta media retrieval with HTTP 401
+  after the access token became invalid/expired. It never reached transcription.
+  This was an external Meta authorization issue, not an audio/transcription
+  architecture failure, and it is not evidence of Lebanese transcription failure.
+- The Meta token was refreshed afterward and WhatsApp functionality recovered.
+  No successful Lebanese retest is recorded, so Lebanese audio is not claimed verified.
+- Known cosmetic behavior remains: an audio worker log may show content=None because
+  recognized speech lives in transcript. This does not change the processing input.
+
+NEXT FEATURE
+
+Conversation context is next. Long-term memory is not part of that next checkpoint.
+No conversation-context implementation or new branch is started by this closing work.
+This branch is not merged to main as part of closing.
+No images, documents, tools, policy, approvals, calls, TTS or voice replies were added.

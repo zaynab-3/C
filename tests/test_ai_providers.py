@@ -7,6 +7,7 @@ from c_backend.ai.base import (
     AIProviderConfigurationError,
     AIProviderError,
     AIResponse,
+    AITranscription,
 )
 from c_backend.ai import factory as factory_module
 from c_backend.ai import gemini_provider as gemini_module
@@ -184,3 +185,73 @@ async def test_provider_rejects_empty_prompt(monkeypatch):
 
     with pytest.raises(AIProviderError, match="Prompt must not be empty"):
         await provider.generate_text("   ")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mime_type", ["audio/ogg; codecs=opus", " AUDIO/OGG ; codecs=opus"])
+async def test_gemini_transcribes_bytes_with_normalized_mime_type(monkeypatch, mime_type):
+    generate = AsyncMock(return_value=SimpleNamespace(text="  Spoken words  "))
+    monkeypatch.setattr(gemini_module.genai, "Client", Mock(return_value=SimpleNamespace(
+        aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)),
+    )))
+    provider = gemini_module.GeminiProvider(api_key="dummy-key", model="configured-model")
+    result = await provider.transcribe_audio(b"audio", mime_type=mime_type)
+    assert result == AITranscription("Spoken words", "gemini", "configured-model")
+    call = generate.await_args.kwargs
+    assert call["model"] == "configured-model"
+    assert len(call["contents"]) == 1
+    part = call["contents"][0]
+    assert part.inline_data.data == b"audio"
+    assert part.inline_data.mime_type == "audio/ogg"
+    assert call["config"].automatic_function_calling.disable is True
+    assert not call["config"].tools
+    assert "Do not answer the speaker" in call["config"].system_instruction
+    assert "Return only the recognized spoken content" in call["config"].system_instruction
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mime_type", ["image/png; x=audio/ogg", "audio/; codecs=opus", ""])
+async def test_gemini_rejects_invalid_normalized_audio_mime(monkeypatch, mime_type):
+    generate = AsyncMock()
+    monkeypatch.setattr(gemini_module.genai, "Client", Mock(return_value=SimpleNamespace(
+        aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)),
+    )))
+    provider = gemini_module.GeminiProvider(api_key="dummy-key", model="test-model")
+    with pytest.raises(AIProviderError, match="audio MIME type"):
+        await provider.transcribe_audio(b"audio", mime_type=mime_type)
+    generate.assert_not_awaited()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("returned_text", [None, "", "  "])
+async def test_gemini_rejects_empty_transcription(monkeypatch, returned_text):
+    generate = AsyncMock(return_value=SimpleNamespace(text=returned_text))
+    monkeypatch.setattr(gemini_module.genai, "Client", Mock(return_value=SimpleNamespace(
+        aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)),
+    )))
+    provider = gemini_module.GeminiProvider(api_key="dummy-key", model="test-model")
+    with pytest.raises(AIProviderError, match="no transcript"):
+        await provider.transcribe_audio(b"audio", mime_type="audio/ogg")
+
+
+@pytest.mark.anyio
+async def test_gemini_transcription_error_is_sanitized(monkeypatch):
+    generate = AsyncMock(side_effect=RuntimeError("dummy-sensitive-request"))
+    monkeypatch.setattr(gemini_module.genai, "Client", Mock(return_value=SimpleNamespace(
+        aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)),
+    )))
+    provider = gemini_module.GeminiProvider(api_key="dummy-key", model="test-model")
+    with pytest.raises(AIProviderError) as caught:
+        await provider.transcribe_audio(b"audio", mime_type="audio/ogg")
+    assert "dummy-sensitive-request" not in str(caught.value)
+    assert caught.value.__suppress_context__
+
+
+@pytest.mark.anyio
+async def test_openai_keeps_text_support_but_rejects_transcription(monkeypatch):
+    constructor = Mock()
+    monkeypatch.setattr(openai_module, "AsyncOpenAI", constructor)
+    provider = openai_module.OpenAIProvider(api_key="dummy-key", model="test-model")
+    with pytest.raises(AIProviderError, match="not supported by openai"):
+        await provider.transcribe_audio(b"audio", mime_type="audio/ogg")
+    constructor.return_value.responses.create.assert_not_called()

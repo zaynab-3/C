@@ -3,11 +3,12 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from c_backend.ai import AIProviderError
+from c_backend.ai import AIProviderError, get_ai_provider
 from c_backend.celery_app import celery_app
 from c_backend.db import AsyncSessionLocal, engine
 from c_backend.models import Message, OutboxEvent
 from c_backend.orchestration import run_text_graph
+from c_backend.whatsapp_media import WhatsAppMediaError, download_whatsapp_audio
 from c_backend.whatsapp_client import (
     WhatsAppSendError,
     send_whatsapp_text,
@@ -20,90 +21,121 @@ async def _process_message(
 ) -> str:
     try:
         async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(Message)
-                .where(
-                    Message.channel == channel,
-                    Message.external_id == external_id,
-                )
-                .with_for_update()
-            )
-
-            message = result.scalar_one_or_none()
-
-            if message is None:
-                raise ValueError(
-                    f"Message not found: {channel}/{external_id}"
+            while True:
+                result = await session.execute(
+                    select(Message)
+                    .where(
+                        Message.channel == channel,
+                        Message.external_id == external_id,
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
                 )
 
-            message_id = str(message.id)
+                message = result.scalar_one_or_none()
 
-            if message.processed_at is not None:
+                if message is None:
+                    raise ValueError(
+                        f"Message not found: {channel}/{external_id}"
+                    )
+
+                message_id = str(message.id)
+
+                if message.processed_at is not None:
+                    print(
+                        f"C worker skipped already processed message: "
+                        f"{channel} / {external_id}"
+                    )
+                    return f"already processed message {message_id}"
+
+                if channel != "whatsapp":
+                    message.processed_at = datetime.now(timezone.utc)
+                    await session.commit()
+                    return f"processed message {message_id}"
+
+                if message.generated_reply:
+                    print(
+                        f"C worker reused persisted AI reply: "
+                        f"{channel} / {external_id}"
+                    )
+                    return f"reply already prepared for message {message_id}"
+
+                if message.content_type == "audio":
+                    if not message.transcript:
+                        if not message.media_id or not message.media_id.strip():
+                            raise WhatsAppMediaError("Audio media ID is required")
+                        if (
+                            not message.media_mime_type
+                            or not message.media_mime_type.strip().lower().startswith("audio/")
+                        ):
+                            raise WhatsAppMediaError("An audio MIME type is required")
+                        audio = await download_whatsapp_audio(message.media_id)
+                        provider = get_ai_provider()
+                        transcription = await provider.transcribe_audio(
+                            audio, mime_type=message.media_mime_type,
+                        )
+                        transcript = transcription.text.strip()
+                        if not transcript:
+                            raise AIProviderError("Provider returned no transcript")
+                        message.transcript = transcript
+                        message.transcription_provider = transcription.provider
+                        message.transcription_model = transcription.model
+                        message.transcribed_at = datetime.now(timezone.utc)
+                        await session.commit()
+                        # The commit releases the row lock. Reacquire it and refresh
+                        # state before generation; a duplicate task may have advanced it.
+                        continue
+                    input_text = message.transcript
+                elif message.content_type == "text":
+                    input_text = message.content
+                else:
+                    raise ValueError("Unsupported WhatsApp content type")
+
+                if not input_text or not input_text.strip():
+                    raise ValueError("WhatsApp text message has no content")
+
                 print(
-                    f"C worker skipped already processed message: "
-                    f"{channel} / {external_id}"
+                    f"C worker generating reply: "
+                    f"{message.channel} / "
+                    f"{message.external_id} / "
+                    f"{message.content}"
                 )
-                return f"already processed message {message_id}"
 
-            if channel != "whatsapp":
-                message.processed_at = datetime.now(timezone.utc)
+                graph_result = await run_text_graph(
+                    input_text,
+                    system_prompt=(
+                        "You are C, a reliable WhatsApp-first assistant. "
+                        "Reply directly and concisely to the user's message. "
+                        "Do not claim that you performed external actions. "
+                        "Tool execution is not available at this stage."
+                    ),
+                )
+
+                message.generated_reply = graph_result["response_text"]
+                message.ai_provider = graph_result["provider"]
+                message.ai_model = graph_result["model"]
+                message.ai_generated_at = datetime.now(timezone.utc)
+
+                session.add(
+                    OutboxEvent(
+                        event_key=f"send_whatsapp_reply:{message.id}",
+                        event_type="send_whatsapp_reply",
+                        payload={
+                            "channel": channel,
+                            "external_id": external_id,
+                        },
+                    )
+                )
+
                 await session.commit()
-                return f"processed message {message_id}"
 
-            if not message.content or not message.content.strip():
-                raise ValueError(
-                    "WhatsApp text message has no content"
-                )
-
-            if message.generated_reply:
                 print(
-                    f"C worker reused persisted AI reply: "
+                    f"C persisted AI reply via "
+                    f"{graph_result['provider']}/{graph_result['model']}: "
                     f"{channel} / {external_id}"
                 )
-                return f"reply already prepared for message {message_id}"
 
-            print(
-                f"C worker generating reply: "
-                f"{message.channel} / "
-                f"{message.external_id} / "
-                f"{message.content}"
-            )
-
-            graph_result = await run_text_graph(
-                message.content,
-                system_prompt=(
-                    "You are C, a reliable WhatsApp-first assistant. "
-                    "Reply directly and concisely to the user's message. "
-                    "Do not claim that you performed external actions. "
-                    "Tool execution is not available at this stage."
-                ),
-            )
-
-            message.generated_reply = graph_result["response_text"]
-            message.ai_provider = graph_result["provider"]
-            message.ai_model = graph_result["model"]
-            message.ai_generated_at = datetime.now(timezone.utc)
-
-            session.add(
-                OutboxEvent(
-                    event_key=f"send_whatsapp_reply:{message.id}",
-                    event_type="send_whatsapp_reply",
-                    payload={
-                        "channel": channel,
-                        "external_id": external_id,
-                    },
-                )
-            )
-
-            await session.commit()
-
-            print(
-                f"C persisted AI reply via "
-                f"{graph_result['provider']}/{graph_result['model']}: "
-                f"{channel} / {external_id}"
-            )
-
-            return f"prepared message {message_id}"
+                return f"prepared message {message_id}"
 
     finally:
         await engine.dispose()
@@ -111,7 +143,7 @@ async def _process_message(
 
 @celery_app.task(
     name="c.process_message",
-    autoretry_for=(AIProviderError,),
+    autoretry_for=(AIProviderError, WhatsAppMediaError),
     retry_backoff=True,
     retry_backoff_max=60,
     retry_jitter=True,

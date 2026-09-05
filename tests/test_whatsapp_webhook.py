@@ -4,6 +4,8 @@ import hmac
 import json
 from unittest.mock import AsyncMock
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 import c_backend.main as main_module
@@ -268,3 +270,74 @@ def test_post_rejects_invalid_signature(monkeypatch):
     )
 
     assert response.status_code == 401
+
+
+def audio_payload():
+    payload = copy.deepcopy(VALID_META_PAYLOAD)
+    message = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+    message.pop("text")
+    message.update(type="audio", audio={
+        "id": "media-123", "mime_type": "audio/ogg; codecs=opus",
+        "sha256": "test-sha256", "voice": True, "future_field": "ignored",
+    })
+    return payload
+
+
+@pytest.mark.parametrize("result", [SaveMessageResult.STORED, SaveMessageResult.DUPLICATE])
+def test_audio_webhook_normalizes_and_handles_duplicates(monkeypatch, result):
+    use_test_settings(monkeypatch)
+    save = AsyncMock(return_value=result)
+    monkeypatch.setattr(main_module, "save_message", save)
+    response = signed_post(audio_payload())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["messages"] == 1
+    assert data["stored"] == int(result == SaveMessageResult.STORED)
+    assert data["queued"] == int(result == SaveMessageResult.STORED)
+    assert data["duplicates"] == int(result == SaveMessageResult.DUPLICATE)
+    message = save.await_args.kwargs["message"]
+    assert message.external_id == "wamid.test.001"
+    assert message.sender_id == AUTHORIZED_SENDER
+    assert message.received_at.timestamp() == 1788600000
+    assert message.content_type == "audio"
+    assert message.content is None
+    assert message.media_id == "media-123"
+    assert message.media_mime_type == "audio/ogg; codecs=opus"
+    assert message.media_sha256 == "test-sha256"
+    assert message.media_is_voice is True
+    assert message.media_filename is None
+
+
+def test_audio_sender_authorization_remains_required(monkeypatch):
+    use_test_settings(monkeypatch)
+    save = AsyncMock()
+    monkeypatch.setattr(main_module, "save_message", save)
+    payload = audio_payload()
+    payload["entry"][0]["changes"][0]["value"]["messages"][0]["from"] = "unauthorized-test-sender"
+    response = signed_post(payload)
+    assert response.status_code == 200
+    assert response.json()["ignored"] == 1
+    save.assert_not_awaited()
+
+
+@pytest.mark.parametrize("message_type", ["image", "document", "video", "sticker"])
+def test_unsupported_inbound_types_remain_ignored(monkeypatch, message_type):
+    use_test_settings(monkeypatch)
+    save = AsyncMock()
+    monkeypatch.setattr(main_module, "save_message", save)
+    payload = copy.deepcopy(VALID_META_PAYLOAD)
+    payload["entry"][0]["changes"][0]["value"]["messages"][0]["type"] = message_type
+    response = signed_post(payload)
+    assert response.status_code == 200
+    assert response.json()["messages"] == 0
+    save.assert_not_awaited()
+
+
+def test_audio_voice_flag_is_optional(monkeypatch):
+    use_test_settings(monkeypatch)
+    save = AsyncMock(return_value=SaveMessageResult.STORED)
+    monkeypatch.setattr(main_module, "save_message", save)
+    payload = audio_payload()
+    del payload["entry"][0]["changes"][0]["value"]["messages"][0]["audio"]["voice"]
+    assert signed_post(payload).status_code == 200
+    assert save.await_args.kwargs["message"].media_is_voice is None
