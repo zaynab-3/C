@@ -3,7 +3,7 @@ C Project Sync
 Last updated: 2026-09-05
 Maintainer: Zainab's ChatGPT
 Repository: https://github.com/zaynab-3/C.git
-Current branch: feat/reliable-ai-outbound-delivery
+Current branch: feat/langgraph-text-orchestration
 
 PURPOSE
 
@@ -46,7 +46,8 @@ Phone
 -> c.dispatch_outbox
 -> Redis / Celery
 -> c.process_message
--> AIProvider / Gemini
+-> stateless text LangGraph (START -> generate_response -> END)
+-> AIProvider / configured Gemini or OpenAI provider
 -> generated reply + AI metadata persisted
 -> send_whatsapp_reply OutboxEvent
 -> c.dispatch_outbox
@@ -144,7 +145,7 @@ Tests
 
 Latest complete test run:
 
-30 passed
+34 passed
 1 dependency deprecation warning
 
 Warnings are from dependencies and are not project failures.
@@ -245,7 +246,7 @@ last_error
 published_at
 created_at
 
-Current event type: process_message
+Current event types: process_message, send_whatsapp_reply
 
 AI PROVIDER DECISION
 
@@ -363,7 +364,7 @@ retries
 
 NOT IMPLEMENTED YET
 
-LangGraph
+LangGraph persistence/checkpointing and nodes beyond text generation
 
 audio transcription/processing
 
@@ -389,8 +390,6 @@ Work execution integration
 
 complete action/audit schema
 
-dedicated outbound jobs
-
 dead-letter/operator tooling
 
 production monitoring
@@ -401,9 +400,9 @@ production hosting
 
 Cloudflare Quick Tunnel remains DEVELOPMENT ONLY.
 
-EXACT NEXT CHECKPOINT
+CURRENT TEXT ORCHESTRATION CHECKPOINT
 
-Add the first text-only LangGraph orchestration flow.
+The first text-only LangGraph orchestration flow is implemented and unit-tested.
 
 Required direction:
 
@@ -418,7 +417,7 @@ Keep LangGraph provider-agnostic.
 
 Do not allow Gemini/OpenAI SDKs to execute C tools directly.
 
-After the text graph is stable:
+Future scope (not part of this checkpoint):
 -> audio / voice notes
 -> images
 -> documents
@@ -625,3 +624,35 @@ NEXT
 
 First text-only LangGraph orchestration.
 
+
+TEXT LANGGRAPH CHECKPOINT
+
+Branch: feat/langgraph-text-orchestration
+
+WHAT CHANGED
+
+- Added orchestration/text.py with typed input, state, result and invocation context.
+- START -> generate_response -> END calls get_ai_provider() / AIProvider.
+- c.process_message invokes the graph and persists its response/provider/model.
+- The exact existing system prompt remains in the worker and is passed as context.
+- The compiled graph is reused, with fresh state per invocation and no checkpointer.
+- Provider errors propagate unchanged to the existing Celery generation retry boundary.
+- Reply/AI metadata and outbound event still share one transaction.
+- Delivery, duplicate protection and provider implementations are unchanged.
+- No tools, actions or multimodal nodes were added.
+
+WHAT WAS VERIFIED
+
+- uv run pytest: 34 passed, 1 existing Starlette/AnyIO deprecation warning.
+- Tests ran from an isolated temporary directory with dummy database/broker settings,
+  avoiding the repository .env; provider and external delivery calls were mocked.
+- Tests cover graph/provider calls and metadata, independent invocations,
+  worker graph traversal, unchanged prompt, AI failure without persistence/delivery,
+  saved-reply reuse, outbound delivery failures and outbox dispatch reliability.
+- No live WhatsApp/provider E2E was performed for this graph checkpoint.
+
+REVIEW NOTES
+
+- Existing database row locks remain held during generation and delivery.
+- Delivery remains at-least-once with the previously documented Meta/commit ambiguity.
+- This checkpoint stops at stateless text orchestration; no further scope is implemented.
