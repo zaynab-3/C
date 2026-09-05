@@ -3,7 +3,7 @@ C Project Sync
 Last updated: 2026-09-05
 Maintainer: Zainab's ChatGPT
 Repository: https://github.com/zaynab-3/C.git
-Current branch: feat/ai-provider-abstraction
+Current branch: feat/reliable-ai-outbound-delivery
 
 PURPOSE
 
@@ -46,7 +46,11 @@ Phone
 -> c.dispatch_outbox
 -> Redis / Celery
 -> c.process_message
--> row lock + processed-message check
+-> AIProvider / Gemini
+-> generated reply + AI metadata persisted
+-> send_whatsapp_reply OutboxEvent
+-> c.dispatch_outbox
+-> c.send_whatsapp_reply
 -> Meta outbound API
 -> processed_at + outbound_external_id
 -> WhatsApp reply
@@ -89,12 +93,12 @@ Deduplication by UNIQUE(channel, external_id)
 
 Real outbound WhatsApp send
 
-Automatic deterministic worker reply
+AI-generated worker reply through AIProvider
 
 Current Graph API version in code: v26.0
 
 Current development reply:
-C received your message automatically.
+AI-generated response through the configured provider/model.
 
 Transactional outbox
 
@@ -140,8 +144,8 @@ Tests
 
 Latest complete test run:
 
-17 passed
-2 dependency deprecation warnings
+30 passed
+1 dependency deprecation warning
 
 Warnings are from dependencies and are not project failures.
 
@@ -265,7 +269,7 @@ v
 AI Provider Interface
 | |
 v v
-GeminiProvider OpenAIProvider
+GeminiProvider     OpenAIProvider
 
 The rest of C calls the shared provider interface rather than provider-specific code.
 Provider selection must be configuration-driven.
@@ -359,15 +363,7 @@ retries
 
 NOT IMPLEMENTED YET
 
-AI Provider interface
-
-GeminiProvider
-
-OpenAIProvider
-
 LangGraph
-
-intelligent text replies
 
 audio transcription/processing
 
@@ -407,23 +403,28 @@ Cloudflare Quick Tunnel remains DEVELOPMENT ONLY.
 
 EXACT NEXT CHECKPOINT
 
-Create shared AI Provider interface.
+Add the first text-only LangGraph orchestration flow.
 
-Implement GeminiProvider first for free testing.
+Required direction:
 
-Preserve OpenAIProvider compatibility from day one.
+WhatsApp message
+-> worker
+-> LangGraph
+-> AIProvider
+-> generated response
+-> durable outbound delivery
 
-Make provider choice configuration-driven.
+Keep LangGraph provider-agnostic.
 
-Add provider-switching tests.
+Do not allow Gemini/OpenAI SDKs to execute C tools directly.
 
-Keep model calls inside worker/orchestration, never the webhook.
-
-Add first text-only LangGraph flow.
-
-Only then add audio/image/document processing.
-
-Do not start tool execution or approvals before the provider/orchestration boundary is stable.
+After the text graph is stable:
+-> audio / voice notes
+-> images
+-> documents
+-> action proposals
+-> policy / approval
+-> tool integrations
 
 HOTEIT HANDOFF FORMAT
 
@@ -449,16 +450,15 @@ Zainab's ChatGPT will reconcile Hoteit's handoff against repository state and up
 
 LATEST VERIFIED MILESTONE
 
-b6b2f2b
-feat: add reliable transactional outbox processing
+bcc8404
+feat: persist AI replies and isolate WhatsApp delivery retries
 
-Live Meta WhatsApp E2E: VERIFIED
-Transactional outbox: VERIFIED
-Automated tests: 17 PASSED
+Live WhatsApp AI E2E: VERIFIED
+Reliable AI generation / delivery split: VERIFIED
+Automated tests: 30 PASSED
 
 NEXT:
-AI provider abstraction -> Gemini development implementation -> OpenAI-compatible production path.
-
+First text-only LangGraph orchestration layer.
 
 AI PROVIDER ABSTRACTION CHECKPOINT
 
@@ -560,14 +560,68 @@ WhatsApp
 -> Meta Cloud API
 -> WhatsApp
 
-KNOWN RELIABILITY ISSUE
+RELIABILITY ISSUE RESOLVED
 
-- If Gemini succeeds but Meta outbound sending fails, the current Celery retry reruns the entire message task and calls Gemini again.
-- This can waste AI quota and produce a different reply on retry.
-- Before deeper orchestration, generated AI output should be persisted so Meta delivery can retry independently without regenerating the response.
+- AI generation and WhatsApp delivery are now separate retry boundaries.
+- Generated AI replies are persisted before outbound delivery.
+- Meta delivery retries reuse the persisted reply instead of calling the AI provider again.
+- A deterministic send_whatsapp_reply outbox event is created for delivery.
 
 NEXT
 
-- Harden AI generation vs outbound delivery retry boundaries.
-- Then add the first text-only LangGraph orchestration layer.
+- Add the first text-only LangGraph orchestration layer.
+
+
+
+RELIABLE AI OUTBOUND DELIVERY CHECKPOINT
+
+Branch: feat/reliable-ai-outbound-delivery
+Implementation commit: bcc8404
+Migration: cba3814f9172
+
+WHAT CHANGED
+
+- messages now persist generated_reply, ai_provider, ai_model and ai_generated_at.
+- c.process_message performs AI generation only.
+- Generated reply + send_whatsapp_reply OutboxEvent are committed durably.
+- c.send_whatsapp_reply performs Meta delivery independently.
+- AIProviderError retries generation only.
+- WhatsAppSendError retries delivery only.
+- Existing generated replies are reused instead of regenerated.
+
+WHAT WAS VERIFIED
+
+- Focused reliability tests passed.
+- Full suite: 30 passed, 1 dependency warning.
+- Live WhatsApp message completed end-to-end.
+- Phone received: Test 2 received. System operational.
+- PostgreSQL confirmed generated_reply exists.
+- PostgreSQL confirmed ai_provider=gemini.
+- Live test model: gemini-3.5-flash-lite.
+- PostgreSQL confirmed ai_generated_at is populated.
+- PostgreSQL confirmed processed_at is populated.
+- PostgreSQL confirmed outbound_external_id is populated.
+- send_whatsapp_reply outbox event status=published.
+- send_whatsapp_reply attempts=1.
+- send_whatsapp_reply last_error is empty.
+
+IMPORTANT
+
+Delivery remains at-least-once, not exactly-once.
+
+A rare ambiguity remains if Meta accepts an outbound message and the worker crashes before PostgreSQL records the successful delivery.
+
+Current external AI / Meta calls are still made while database row locks are held. This is acceptable for the current development checkpoint but should later move to a claim / lease state model before production scaling.
+
+DEVELOPMENT MODEL NOTE
+
+gemini-3.8-flash hit the current free-tier request quota during live testing.
+
+The local development model was temporarily changed to gemini-3.5-flash-lite.
+
+This does not change the provider architecture.
+
+NEXT
+
+First text-only LangGraph orchestration.
 

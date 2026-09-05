@@ -59,6 +59,26 @@ class Message(Base):
         nullable=False,
     )
 
+    generated_reply: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    ai_provider: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    ai_model: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    ai_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
