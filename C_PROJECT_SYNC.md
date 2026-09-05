@@ -535,11 +535,39 @@ WHAT WAS VERIFIED
 
 CURRENT STATUS
 
-Code-level wiring is complete. Live WhatsApp -> Gemini -> WhatsApp phone verification is still pending.
+LIVE END-TO-END VERIFIED on 2026-09-05.
+
+WHAT WAS VERIFIED
+
+- Real inbound WhatsApp message reached Meta -> FastAPI -> PostgreSQL/outbox -> Celery.
+- c.process_message called Gemini through the provider-agnostic AIProvider.
+- Gemini 3.8 Flash returned HTTP 200.
+- Meta Graph API outbound send returned HTTP 200.
+- The physical WhatsApp phone received C's generated reply.
+- PostgreSQL confirmed processed_at is set.
+- PostgreSQL confirmed outbound_external_id is stored.
+- End-to-end text intelligence path is now live.
+
+LIVE PATH
+
+WhatsApp
+-> Meta Cloud API
+-> C FastAPI gateway
+-> PostgreSQL / transactional outbox
+-> Celery worker
+-> AIProvider
+-> Gemini
+-> Meta Cloud API
+-> WhatsApp
+
+KNOWN RELIABILITY ISSUE
+
+- If Gemini succeeds but Meta outbound sending fails, the current Celery retry reruns the entire message task and calls Gemini again.
+- This can waste AI quota and produce a different reply on retry.
+- Before deeper orchestration, generated AI output should be persisted so Meta delivery can retry independently without regenerating the response.
 
 NEXT
 
-- Rebuild/recreate the Docker worker so it receives Gemini configuration.
-- Send one real WhatsApp text to C.
-- Verify worker logs, Meta outbound success, database processed state, and physical phone reply.
+- Harden AI generation vs outbound delivery retry boundaries.
+- Then add the first text-only LangGraph orchestration layer.
 
