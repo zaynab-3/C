@@ -52,4 +52,5 @@ class MetaWebhookAck(BaseModel):
     messages: int
     stored: int
     duplicates: int
+    ignored: int
     queued: int

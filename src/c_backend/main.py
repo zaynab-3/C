@@ -120,15 +120,21 @@ async def receive_whatsapp_message(
     _signature: None = Depends(require_valid_meta_signature),
     session: AsyncSession = Depends(get_db_session),
 ) -> MetaWebhookAck:
+    settings = get_settings()
     raw_payload = await request.json()
 
     messages = extract_text_messages(payload)
 
     stored = 0
     duplicates = 0
+    ignored = 0
     queued = 0
 
     for message in messages:
+        if message.sender_id not in settings.whatsapp_allowed_senders:
+            ignored += 1
+            continue
+
         result = await save_message(
             session=session,
             message=message,
@@ -153,5 +159,6 @@ async def receive_whatsapp_message(
         messages=len(messages),
         stored=stored,
         duplicates=duplicates,
+        ignored=ignored,
         queued=queued,
     )

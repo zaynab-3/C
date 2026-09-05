@@ -31,6 +31,19 @@ class Settings(BaseSettings):
         validation_alias="WHATSAPP_APP_SECRET",
     )
 
+    whatsapp_allowed_senders_raw: str = Field(
+        default="",
+        validation_alias="WHATSAPP_ALLOWED_SENDERS",
+    )
+
+    @property
+    def whatsapp_allowed_senders(self) -> set[str]:
+        return {
+            sender.strip()
+            for sender in self.whatsapp_allowed_senders_raw.split(",")
+            if sender.strip()
+        }
+
 
 @lru_cache
 def get_settings() -> Settings:

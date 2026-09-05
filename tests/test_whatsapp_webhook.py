@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import hmac
 import json
@@ -14,11 +15,13 @@ client = TestClient(main_module.app)
 
 TEST_VERIFY_TOKEN = "test-verify-token"
 TEST_APP_SECRET = "test-app-secret"
+AUTHORIZED_SENDER = "96170123456"
 
 
 class FakeSettings:
     whatsapp_verify_token = TEST_VERIFY_TOKEN
     whatsapp_app_secret = TEST_APP_SECRET
+    whatsapp_allowed_senders = {AUTHORIZED_SENDER}
 
 
 async def fake_db_session():
@@ -40,7 +43,7 @@ VALID_META_PAYLOAD = {
                         "messaging_product": "whatsapp",
                         "messages": [
                             {
-                                "from": "96170123456",
+                                "from": AUTHORIZED_SENDER,
                                 "id": "wamid.test.001",
                                 "timestamp": "1788600000",
                                 "type": "text",
@@ -119,6 +122,7 @@ def test_new_webhook_is_stored_and_queued(monkeypatch):
     assert data["messages"] == 1
     assert data["stored"] == 1
     assert data["duplicates"] == 0
+    assert data["ignored"] == 0
     assert data["queued"] == 1
 
     delay_mock.assert_called_once_with(
@@ -156,8 +160,48 @@ def test_duplicate_webhook_is_not_queued(monkeypatch):
     assert data["messages"] == 1
     assert data["stored"] == 0
     assert data["duplicates"] == 1
+    assert data["ignored"] == 0
     assert data["queued"] == 0
 
+    delay_mock.assert_not_called()
+
+
+def test_unauthorized_sender_is_ignored(monkeypatch):
+    use_test_settings(monkeypatch)
+
+    save_mock = AsyncMock()
+    delay_mock = Mock()
+
+    monkeypatch.setattr(
+        main_module,
+        "save_message",
+        save_mock,
+    )
+    monkeypatch.setattr(
+        main_module.process_message,
+        "delay",
+        delay_mock,
+    )
+
+    payload = copy.deepcopy(VALID_META_PAYLOAD)
+    payload["entry"][0]["changes"][0]["value"]["messages"][0]["from"] = (
+        "96179999999"
+    )
+
+    response = signed_post(payload)
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["status"] == "accepted"
+    assert data["messages"] == 1
+    assert data["stored"] == 0
+    assert data["duplicates"] == 0
+    assert data["ignored"] == 1
+    assert data["queued"] == 0
+
+    save_mock.assert_not_called()
     delay_mock.assert_not_called()
 
 
