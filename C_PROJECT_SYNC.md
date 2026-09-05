@@ -238,3 +238,26 @@ If Hoteit's side makes a decision, finds a conflict, or implements something, it
 Zainab will bring that handoff back to her ChatGPT. Her ChatGPT will reconcile it against the repository and update this shared sync file.
 
 The GitHub repository is the common technical reference between both sides.
+
+## 2026-09-05 — Gateway hardening checkpoint
+
+### WHAT CHANGED
+- Created branch `feat/gateway-hardening`.
+- Optimized Docker dependency caching.
+- Celery worker now runs as a non-root user.
+- Added pytest test suite for the WhatsApp gateway.
+
+### WHAT WAS VERIFIED
+- Celery worker starts without the previous root-user warning.
+- Worker registers `c.process_message`.
+- Worker connects to Redis and reaches ready state.
+- Docker rebuild dropped from many minutes to roughly 50 seconds on the first optimized build; future source-only rebuilds can reuse dependency layers.
+- Automated gateway tests pass:
+  - new webhook -> stored and queued once
+  - duplicate webhook -> not queued
+  - invalid webhook -> HTTP 422
+- Test result: 3 passed.
+
+### NEXT RECOMMENDED ACTION
+Start the real Meta webhook adapter, beginning with the GET verification handshake, then POST signature verification and real Meta payload parsing.
+
