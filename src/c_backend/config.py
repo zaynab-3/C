@@ -1,4 +1,5 @@
-from functools import lru_cache
+﻿from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -44,6 +45,31 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str | None = Field(
         default=None,
         validation_alias="WHATSAPP_PHONE_NUMBER_ID",
+    )
+
+    ai_provider: Literal["gemini", "openai"] = Field(
+        default="gemini",
+        validation_alias="AI_PROVIDER",
+    )
+
+    gemini_api_key: str | None = Field(
+        default=None,
+        validation_alias="GEMINI_API_KEY",
+    )
+
+    gemini_model: str = Field(
+        default="gemini-3.8-flash",
+        validation_alias="GEMINI_MODEL",
+    )
+
+    openai_api_key: str | None = Field(
+        default=None,
+        validation_alias="OPENAI_API_KEY",
+    )
+
+    openai_model: str | None = Field(
+        default=None,
+        validation_alias="OPENAI_MODEL",
     )
 
     @property

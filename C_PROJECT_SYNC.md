@@ -1,9 +1,9 @@
-C Project Sync
+﻿C Project Sync
 
 Last updated: 2026-09-05
 Maintainer: Zainab's ChatGPT
 Repository: https://github.com/zaynab-3/C.git
-Current branch: feat/gateway-hardening
+Current branch: feat/ai-provider-abstraction
 
 PURPOSE
 
@@ -458,3 +458,38 @@ Automated tests: 17 PASSED
 
 NEXT:
 AI provider abstraction -> Gemini development implementation -> OpenAI-compatible production path.
+
+
+AI PROVIDER ABSTRACTION CHECKPOINT
+
+Branch: feat/ai-provider-abstraction
+
+WHAT CHANGED
+
+- Added one AIProvider contract shared by all model vendors.
+- Added GeminiProvider for free development/testing.
+- Added OpenAIProvider for later production use.
+- Provider selection is configuration-driven with AI_PROVIDER.
+- Gemini default development model is gemini-3.8-flash.
+- OpenAI model remains configuration-only until production model selection.
+- Added provider factory and provider-isolation tests.
+
+ARCHITECTURE
+
+C / future LangGraph
+-> AIProvider
+   -> GeminiProvider [development/free testing]
+   -> OpenAIProvider [production later]
+
+IMPORTANT
+
+No OpenAI paid API call is required during development.
+The webhook and worker must not depend on provider-specific SDK APIs.
+Provider-specific code stays behind the AIProvider boundary.
+
+NEXT
+
+- Add a real GEMINI_API_KEY locally only; never commit it.
+- Live-test Gemini through the provider abstraction.
+- Then connect text message processing to the AI provider inside the worker/orchestration layer.
+- LangGraph comes after the provider boundary is live-verified.
